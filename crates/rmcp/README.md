@@ -141,6 +141,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 RMCP supports multiple transport mechanisms, each suited for different use cases:
 
+### `transport-inproc`
+In-process transport backed by in-memory channels, useful for embedded or WASM runtimes.
+
 ### `transport-async-rw`
 Low-level interface for asynchronous read/write operations. This is the foundation for many other transports.
 
@@ -209,6 +212,7 @@ RMCP uses feature flags to control which components are included:
 - `server`: Enable server functionality and the tool system
 - `macros`: Enable the `#[tool]` macro (enabled by default)
 - Transport-specific features:
+  - `transport-inproc`: In-process channel transport
   - `transport-async-rw`: Async read/write support
   - `transport-io`: I/O stream support
   - `transport-child-process`: Child process support
@@ -220,6 +224,7 @@ RMCP uses feature flags to control which components are included:
 
 ## Transports
 
+- `transport-inproc`: In-process channel transport
 - `transport-io`: Server stdio transport
 - `transport-child-process`: Client stdio transport
 - `transport-streamable-http-server` streamable http server transport

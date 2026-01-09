@@ -16,7 +16,7 @@ publish = false
 all-features = true
 
 [dependencies]
-rmcp = { workspace = true, features = ["server", "client"] }
+rmcp = { workspace = true, features = ["server", "client", "transport-inproc"] }
 tokio = { version = "1", features = [
     "macros",
     "rt",
@@ -64,3 +64,7 @@ path = "src/websocket.rs"
 [[example]]
 name = "named-pipe"
 path = "src/named-pipe.rs"
+
+[[example]]
+name = "inproc"
+path = "src/inproc.rs"

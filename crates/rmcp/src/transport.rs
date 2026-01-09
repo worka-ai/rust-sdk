@@ -94,6 +94,10 @@ pub mod io;
 #[cfg_attr(docsrs, doc(cfg(feature = "transport-io")))]
 pub use io::stdio;
 
+#[cfg(feature = "transport-inproc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "transport-inproc")))]
+pub mod inproc;
+
 #[cfg(feature = "auth")]
 #[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
 pub mod auth;

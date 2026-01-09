@@ -126,6 +126,7 @@ transport-streamable-http-server-session = [
   "transport-async-rw",
   "dep:tokio-stream",
 ]
+transport-inproc = []
 # transport-ws = ["transport-io", "dep:tokio-tungstenite"]
 tower = ["dep:tower-service"]
 auth = ["dep:oauth2", "__reqwest", "dep:url"]
@@ -193,6 +194,11 @@ path = "tests/test_message_schema.rs"
 name = "test_progress_subscriber"
 required-features = ["server", "client", "macros"]
 path = "tests/test_progress_subscriber.rs"
+
+[[test]]
+name = "test_inproc_transport"
+required-features = ["server", "client", "macros", "transport-inproc"]
+path = "tests/test_inproc_transport.rs"
 
 [[test]]
 name = "test_elicitation"
