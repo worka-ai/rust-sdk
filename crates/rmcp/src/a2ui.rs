@@ -66,7 +66,7 @@ impl BoolRef {
 pub struct StringArrayRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-    #[serde(rename = "literalArray", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "literalStringArray", skip_serializing_if = "Option::is_none")]
     pub literal_array: Option<Vec<String>>,
 }
 
