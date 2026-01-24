@@ -62,7 +62,7 @@ fn serializes_high_level_widgets() {
 
     let timeline_widget = Widget::new(WidgetKind::Timeline(Timeline {
         children: UiChildren::Items(vec![Widget::new(WidgetKind::TimelineItem(TimelineItem {
-            item_id: Some("item-1".into()),
+            item_id: "item-1".into(),
             title: Some(UiString::Literal("Deploy".into())),
             subtitle: None,
             timestamp: None,
@@ -161,7 +161,7 @@ fn serializes_high_level_widgets() {
         ),
         (
             Widget::new(WidgetKind::TimelineItem(TimelineItem {
-                item_id: Some("item-1".into()),
+                item_id: "item-1".into(),
                 title: Some(UiString::Literal("Title".into())),
                 subtitle: None,
                 timestamp: None,

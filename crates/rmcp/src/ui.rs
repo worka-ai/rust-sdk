@@ -4,10 +4,11 @@
 
 use crate::a2ui::{
     Action, ActionContextEntry, ActionValue, AudioPlayerProps, BoolRef, ButtonProps, CardProps,
-    CheckBoxProps, ChoiceOptionProps, ColumnProps, ComponentChildren, ComponentEntry, ComponentKind,
+    CheckBoxProps, ChoiceOption as A2ChoiceOption, ColumnProps, ComponentChildren, ComponentEntry,
+    ComponentKind,
     ComponentTemplate, DateTimeInputProps, DividerProps, IconProps, ImageProps, ListProps,
     ModalProps, MultipleChoiceProps, NumberRef, RowProps, SliderProps, StringArrayRef, StringRef,
-    TabItemProps, TabsProps, TextFieldProps, TextProps, TimelineGroupProps, TimelineItemProps,
+    TabItem as A2TabItem, TabsProps, TextFieldProps, TextProps, TimelineGroupProps, TimelineItemProps,
     TimelineLaneProps, TimelineProps, VideoProps,
 };
 
@@ -288,7 +289,7 @@ pub struct Timeline {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimelineItem {
-    pub item_id: Option<String>,
+    pub item_id: String,
     pub title: Option<UiString>,
     pub subtitle: Option<UiString>,
     pub timestamp: Option<UiString>,
@@ -465,7 +466,7 @@ impl UiSerializer {
                     .iter()
                     .map(|item| {
                         let child_id = self.render_widget(&item.child);
-                        TabItemProps {
+                        A2TabItem {
                             title: item.title.to_ref(),
                             child: child_id,
                         }
@@ -477,7 +478,7 @@ impl UiSerializer {
                 let opts = choice
                     .options
                     .iter()
-                    .map(|option| ChoiceOptionProps {
+                    .map(|option| A2ChoiceOption {
                         label: option.label.to_ref(),
                         value: option.value.clone(),
                     })
