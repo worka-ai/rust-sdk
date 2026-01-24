@@ -244,6 +244,14 @@ pub enum ComponentKind {
     Text(TextProps),
     #[serde(rename = "Video")]
     Video(VideoProps),
+    #[serde(rename = "Timeline")]
+    Timeline(TimelineProps),
+    #[serde(rename = "TimelineItem")]
+    TimelineItem(TimelineItemProps),
+    #[serde(rename = "TimelineGroup")]
+    TimelineGroup(TimelineGroupProps),
+    #[serde(rename = "TimelineLane")]
+    TimelineLane(TimelineLaneProps),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -397,6 +405,71 @@ pub struct AudioPlayerProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VideoProps {
     pub url: StringRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineProps {
+    pub children: ComponentChildren,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<String>,
+    #[serde(rename = "autoFollow", skip_serializing_if = "Option::is_none")]
+    pub auto_follow: Option<BoolRef>,
+    #[serde(rename = "laneMode", skip_serializing_if = "Option::is_none")]
+    pub lane_mode: Option<String>,
+    #[serde(rename = "currentItemId", skip_serializing_if = "Option::is_none")]
+    pub current_item_id: Option<StringRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineItemProps {
+    #[serde(rename = "itemId")]
+    pub item_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<StringRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<StringRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<StringRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<StringRef>,
+    #[serde(rename = "contentChild", skip_serializing_if = "Option::is_none")]
+    pub content_child: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<Action>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineGroupProps {
+    #[serde(rename = "groupId")]
+    pub group_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<StringRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<StringRef>,
+    pub children: ComponentChildren,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collapsed: Option<BoolRef>,
+    #[serde(rename = "badgeCount", skip_serializing_if = "Option::is_none")]
+    pub badge_count: Option<NumberRef>,
+    #[serde(rename = "groupState", skip_serializing_if = "Option::is_none")]
+    pub group_state: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineLaneProps {
+    #[serde(rename = "laneId")]
+    pub lane_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<StringRef>,
+    pub children: ComponentChildren,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -369,4 +369,120 @@ fn a2ui_widget_serialization_matches_genui_shapes() {
             }
         })
     );
+
+    let timeline = ComponentEntry::new(
+        "timeline",
+        ComponentKind::Timeline(TimelineProps {
+            children: ComponentChildren::explicit(vec!["item-1".into(), "item-2".into()]),
+            orientation: Some("vertical".into()),
+            alignment: Some("alternate".into()),
+            auto_follow: Some(BoolRef::literal(true)),
+            lane_mode: Some("single".into()),
+            current_item_id: Some(StringRef::literal("item-2")),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&timeline).unwrap(),
+        json!({
+            "id": "timeline",
+            "component": {
+                "Timeline": {
+                    "children": { "explicitList": ["item-1", "item-2"] },
+                    "orientation": "vertical",
+                    "alignment": "alternate",
+                    "autoFollow": { "literalBoolean": true },
+                    "laneMode": "single",
+                    "currentItemId": { "literalString": "item-2" }
+                }
+            }
+        })
+    );
+
+    let timeline_item = ComponentEntry::new(
+        "item-1",
+        ComponentKind::TimelineItem(TimelineItemProps {
+            item_id: "item-1".into(),
+            title: Some(StringRef::literal("Step Started")),
+            subtitle: Some(StringRef::literal("Preparing data")),
+            timestamp: Some(StringRef::literal("2026-01-24T00:00:00Z")),
+            kind: Some("step".into()),
+            state: Some("running".into()),
+            severity: Some("info".into()),
+            icon: Some(StringRef::literal("bolt")),
+            content_child: Some("detail".into()),
+            action: Some(Action::new("timeline.focus_item")),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&timeline_item).unwrap(),
+        json!({
+            "id": "item-1",
+            "component": {
+                "TimelineItem": {
+                    "itemId": "item-1",
+                    "title": { "literalString": "Step Started" },
+                    "subtitle": { "literalString": "Preparing data" },
+                    "timestamp": { "literalString": "2026-01-24T00:00:00Z" },
+                    "kind": "step",
+                    "state": "running",
+                    "severity": "info",
+                    "icon": { "literalString": "bolt" },
+                    "contentChild": "detail",
+                    "action": { "name": "timeline.focus_item" }
+                }
+            }
+        })
+    );
+
+    let timeline_group = ComponentEntry::new(
+        "group-1",
+        ComponentKind::TimelineGroup(TimelineGroupProps {
+            group_id: "group-1".into(),
+            title: Some(StringRef::literal("Task Group")),
+            summary: Some(StringRef::literal("2 tasks")),
+            children: ComponentChildren::explicit(vec!["item-1".into()]),
+            collapsed: Some(BoolRef::literal(false)),
+            badge_count: Some(NumberRef::literal(2.0)),
+            group_state: Some("running".into()),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&timeline_group).unwrap(),
+        json!({
+            "id": "group-1",
+            "component": {
+                "TimelineGroup": {
+                    "groupId": "group-1",
+                    "title": { "literalString": "Task Group" },
+                    "summary": { "literalString": "2 tasks" },
+                    "children": { "explicitList": ["item-1"] },
+                    "collapsed": { "literalBoolean": false },
+                    "badgeCount": { "literalNumber": 2.0 },
+                    "groupState": "running"
+                }
+            }
+        })
+    );
+
+    let timeline_lane = ComponentEntry::new(
+        "lane-1",
+        ComponentKind::TimelineLane(TimelineLaneProps {
+            lane_id: "lane-1".into(),
+            title: Some(StringRef::literal("Lane A")),
+            children: ComponentChildren::explicit(vec!["item-1".into()]),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&timeline_lane).unwrap(),
+        json!({
+            "id": "lane-1",
+            "component": {
+                "TimelineLane": {
+                    "laneId": "lane-1",
+                    "title": { "literalString": "Lane A" },
+                    "children": { "explicitList": ["item-1"] }
+                }
+            }
+        })
+    );
 }
