@@ -1,15 +1,12 @@
-//! A2UI builder types for Worka packs.
+//! Internal serde shapes for the A2UI wire format.
 //!
-//! This module mirrors the default A2UI catalog supported by GenUI:
-//! AudioPlayer, Button, Card, CheckBox, Column, DateTimeInput, Divider, Icon,
-//! Image, List, Modal, MultipleChoice, Row, Slider, Tabs, TextField, Text, Video.
-//!
-//! It provides typed component props and JSON serialization via serde.
+//! This module is intentionally not exported. Packs should construct UI with
+//! `crate::worka_ui` widget structs and call `Surface::to_value()`.
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StringRef {
+pub(crate) struct StringRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(rename = "literalString", skip_serializing_if = "Option::is_none")]
@@ -27,7 +24,7 @@ impl StringRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NumberRef {
+pub(crate) struct NumberRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(rename = "literalNumber", skip_serializing_if = "Option::is_none")]
@@ -45,7 +42,7 @@ impl NumberRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BoolRef {
+pub(crate) struct BoolRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(rename = "literalBoolean", skip_serializing_if = "Option::is_none")]
@@ -63,7 +60,7 @@ impl BoolRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StringArrayRef {
+pub(crate) struct StringArrayRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(rename = "literalStringArray", skip_serializing_if = "Option::is_none")]
@@ -81,7 +78,7 @@ impl StringArrayRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ActionValue {
+pub(crate) struct ActionValue {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(rename = "literalString", skip_serializing_if = "Option::is_none")]
@@ -131,13 +128,13 @@ impl ActionValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ActionContextEntry {
+pub(crate) struct ActionContextEntry {
     pub key: String,
     pub value: ActionValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Action {
+pub(crate) struct Action {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<Vec<ActionContextEntry>>,
@@ -155,7 +152,7 @@ impl Action {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ComponentTemplate {
+pub(crate) struct ComponentTemplate {
     #[serde(rename = "componentId")]
     pub component_id: String,
     #[serde(rename = "dataBinding")]
@@ -163,7 +160,7 @@ pub struct ComponentTemplate {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ComponentChildren {
+pub(crate) struct ComponentChildren {
     #[serde(rename = "explicitList", skip_serializing_if = "Option::is_none")]
     pub explicit_list: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -187,7 +184,7 @@ impl ComponentChildren {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ComponentEntry {
+pub(crate) struct ComponentEntry {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<f64>,
@@ -198,16 +195,11 @@ impl ComponentEntry {
     pub fn new(id: impl Into<String>, component: ComponentKind) -> Self {
         Self { id: id.into(), weight: None, component }
     }
-
-    pub fn with_weight(mut self, weight: f64) -> Self {
-        self.weight = Some(weight);
-        self
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub enum ComponentKind {
+pub(crate) enum ComponentKind {
     #[serde(rename = "AudioPlayer")]
     AudioPlayer(AudioPlayerProps),
     #[serde(rename = "Button")]
@@ -255,7 +247,7 @@ pub enum ComponentKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RowProps {
+pub(crate) struct RowProps {
     pub children: ComponentChildren,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distribution: Option<String>,
@@ -264,7 +256,7 @@ pub struct RowProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ColumnProps {
+pub(crate) struct ColumnProps {
     pub children: ComponentChildren,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distribution: Option<String>,
@@ -273,7 +265,7 @@ pub struct ColumnProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ListProps {
+pub(crate) struct ListProps {
     pub children: ComponentChildren,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direction: Option<String>,
@@ -282,14 +274,14 @@ pub struct ListProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextProps {
+pub(crate) struct TextProps {
     pub text: StringRef,
     #[serde(rename = "usageHint", skip_serializing_if = "Option::is_none")]
     pub usage_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ImageProps {
+pub(crate) struct ImageProps {
     pub url: StringRef,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fit: Option<String>,
@@ -298,18 +290,18 @@ pub struct ImageProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct IconProps {
+pub(crate) struct IconProps {
     pub name: StringRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DividerProps {
+pub(crate) struct DividerProps {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub axis: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ButtonProps {
+pub(crate) struct ButtonProps {
     pub child: String,
     pub action: Action,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -317,7 +309,7 @@ pub struct ButtonProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextFieldProps {
+pub(crate) struct TextFieldProps {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<StringRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -331,18 +323,18 @@ pub struct TextFieldProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CheckBoxProps {
+pub(crate) struct CheckBoxProps {
     pub label: StringRef,
     pub value: BoolRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CardProps {
+pub(crate) struct CardProps {
     pub child: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ModalProps {
+pub(crate) struct ModalProps {
     #[serde(rename = "entryPointChild")]
     pub entry_point_child: String,
     #[serde(rename = "contentChild")]
@@ -350,25 +342,25 @@ pub struct ModalProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TabItem {
+pub(crate) struct TabItem {
     pub title: StringRef,
     pub child: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TabsProps {
+pub(crate) struct TabsProps {
     #[serde(rename = "tabItems")]
     pub tab_items: Vec<TabItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ChoiceOption {
+pub(crate) struct ChoiceOption {
     pub label: StringRef,
     pub value: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MultipleChoiceProps {
+pub(crate) struct MultipleChoiceProps {
     pub selections: StringArrayRef,
     pub options: Vec<ChoiceOption>,
     #[serde(rename = "maxAllowedSelections", skip_serializing_if = "Option::is_none")]
@@ -376,7 +368,7 @@ pub struct MultipleChoiceProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SliderProps {
+pub(crate) struct SliderProps {
     pub value: NumberRef,
     #[serde(rename = "minValue", skip_serializing_if = "Option::is_none")]
     pub min_value: Option<f64>,
@@ -385,7 +377,7 @@ pub struct SliderProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DateTimeInputProps {
+pub(crate) struct DateTimeInputProps {
     pub value: StringRef,
     #[serde(rename = "enableDate", skip_serializing_if = "Option::is_none")]
     pub enable_date: Option<bool>,
@@ -398,17 +390,17 @@ pub struct DateTimeInputProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AudioPlayerProps {
+pub(crate) struct AudioPlayerProps {
     pub url: StringRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VideoProps {
+pub(crate) struct VideoProps {
     pub url: StringRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TimelineProps {
+pub(crate) struct TimelineProps {
     pub children: ComponentChildren,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub orientation: Option<String>,
@@ -423,7 +415,7 @@ pub struct TimelineProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TimelineItemProps {
+pub(crate) struct TimelineItemProps {
     #[serde(rename = "itemId")]
     pub item_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -447,7 +439,7 @@ pub struct TimelineItemProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TimelineGroupProps {
+pub(crate) struct TimelineGroupProps {
     #[serde(rename = "groupId")]
     pub group_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -464,7 +456,7 @@ pub struct TimelineGroupProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TimelineLaneProps {
+pub(crate) struct TimelineLaneProps {
     #[serde(rename = "laneId")]
     pub lane_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -473,14 +465,14 @@ pub struct TimelineLaneProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SurfaceUpdate {
+pub(crate) struct SurfaceUpdate {
     #[serde(rename = "surfaceId")]
     pub surface_id: String,
     pub components: Vec<ComponentEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SurfaceStyles {
+pub(crate) struct SurfaceStyles {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font: Option<String>,
     #[serde(rename = "primaryColor", skip_serializing_if = "Option::is_none")]
@@ -488,7 +480,7 @@ pub struct SurfaceStyles {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BeginRendering {
+pub(crate) struct BeginRendering {
     #[serde(rename = "surfaceId")]
     pub surface_id: String,
     pub root: String,
@@ -499,7 +491,7 @@ pub struct BeginRendering {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DataModelUpdate {
+pub(crate) struct DataModelUpdate {
     #[serde(rename = "surfaceId")]
     pub surface_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -508,13 +500,13 @@ pub struct DataModelUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DeleteSurface {
+pub(crate) struct DeleteSurface {
     #[serde(rename = "surfaceId")]
     pub surface_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum A2uiMessage {
+pub(crate) enum A2uiMessage {
     #[serde(rename = "surfaceUpdate")]
     SurfaceUpdate(SurfaceUpdate),
     #[serde(rename = "beginRendering")]
@@ -524,3 +516,4 @@ pub enum A2uiMessage {
     #[serde(rename = "deleteSurface")]
     DeleteSurface(DeleteSurface),
 }
+

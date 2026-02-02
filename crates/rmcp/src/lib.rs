@@ -165,8 +165,7 @@ pub use service::{RoleServer, serve_server};
 pub mod handler;
 pub mod task_manager;
 pub mod transport;
-pub mod a2ui;
-pub mod ui;
+pub mod worka_ui;
 
 // re-export
 #[cfg(all(feature = "macros", feature = "server"))]
