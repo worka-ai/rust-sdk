@@ -9,6 +9,7 @@ mod task_handler;
 mod tool;
 mod tool_handler;
 mod tool_router;
+mod worka;
 /// # tool
 ///
 /// This macro is used to mark a function as a tool handler.
@@ -106,6 +107,28 @@ pub fn tool(attr: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn tool_router(attr: TokenStream, input: TokenStream) -> TokenStream {
     tool_router::tool_router(attr.into(), input.into())
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+}
+
+/// # worka
+///
+/// Generate Worka pack ABI exports around a dispatch function.
+///
+/// Apply this attribute to a function with the signature:
+///
+/// ```rust,ignore
+/// fn my_dispatch(method: &str, payload: &[u8], response: &mut runtime_proto::runtime::AbiResponse)
+/// ```
+///
+/// The macro will generate:
+/// - `worka_init`
+/// - `worka_handle_request`
+/// - `worka_alloc`
+/// - `worka_free`
+#[proc_macro_attribute]
+pub fn worka(attr: TokenStream, input: TokenStream) -> TokenStream {
+    worka::worka(attr.into(), input.into())
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }
