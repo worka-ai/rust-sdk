@@ -1,9 +1,12 @@
 use rmcp::worka_ui::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn root_component(doc: &Value) -> Value {
     let root = doc.get("root").and_then(Value::as_str).expect("root");
-    let components = doc.get("components").and_then(Value::as_array).expect("components");
+    let components = doc
+        .get("components")
+        .and_then(Value::as_array)
+        .expect("components");
     components
         .iter()
         .find(|entry| entry.get("id").and_then(Value::as_str) == Some(root))
@@ -25,9 +28,12 @@ fn renders_widget_tree_to_document() {
     );
 
     let doc = render(
-        Row::new(Children::items(vec![Text::new("A").into(), Text::new("B").into()]))
-            .distribution("spaceBetween")
-            .alignment("center"),
+        Row::new(Children::items(vec![
+            Text::new("A").into(),
+            Text::new("B").into(),
+        ]))
+        .distribution("spaceBetween")
+        .alignment("center"),
     )
     .to_value();
 
@@ -53,5 +59,8 @@ fn renders_surface_message_list() {
     let messages = view.as_array().expect("message list");
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0]["surfaceUpdate"]["surfaceId"], json!("contacts"));
-    assert_eq!(messages[1]["beginRendering"]["surfaceId"], json!("contacts"));
+    assert_eq!(
+        messages[1]["beginRendering"]["surfaceId"],
+        json!("contacts")
+    );
 }

@@ -1,13 +1,16 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    parse2, Error, FnArg, ItemFn, PatType, Result, ReturnType, Type, TypePath, TypeReference,
-    TypeSlice,
+    Error, FnArg, ItemFn, PatType, Result, ReturnType, Type, TypePath, TypeReference, TypeSlice,
+    parse2,
 };
 
 pub fn worka(attr: TokenStream, input: TokenStream) -> Result<TokenStream> {
     if !attr.is_empty() {
-        return Err(Error::new_spanned(attr, "worka attribute does not accept arguments"));
+        return Err(Error::new_spanned(
+            attr,
+            "worka attribute does not accept arguments",
+        ));
     }
 
     let dispatch_fn: ItemFn = parse2(input)?;
@@ -124,7 +127,12 @@ fn validate_method_arg(arg: &FnArg) -> Result<()> {
     let FnArg::Typed(PatType { ty, .. }) = arg else {
         return Err(Error::new_spanned(arg, "method must be a typed argument"));
     };
-    let Type::Reference(TypeReference { mutability: None, elem, .. }) = &**ty else {
+    let Type::Reference(TypeReference {
+        mutability: None,
+        elem,
+        ..
+    }) = &**ty
+    else {
         return Err(Error::new_spanned(ty, "method must be of type &str"));
     };
     let Type::Path(TypePath { path, .. }) = &**elem else {
@@ -143,7 +151,12 @@ fn validate_payload_arg(arg: &FnArg) -> Result<()> {
     let FnArg::Typed(PatType { ty, .. }) = arg else {
         return Err(Error::new_spanned(arg, "payload must be a typed argument"));
     };
-    let Type::Reference(TypeReference { mutability: None, elem, .. }) = &**ty else {
+    let Type::Reference(TypeReference {
+        mutability: None,
+        elem,
+        ..
+    }) = &**ty
+    else {
         return Err(Error::new_spanned(ty, "payload must be of type &[u8]"));
     };
     let Type::Slice(TypeSlice { elem, .. }) = &**elem else {
@@ -165,14 +178,28 @@ fn validate_response_arg(arg: &FnArg) -> Result<()> {
     let FnArg::Typed(PatType { ty, .. }) = arg else {
         return Err(Error::new_spanned(arg, "response must be a typed argument"));
     };
-    let Type::Reference(TypeReference { mutability: Some(_), elem, .. }) = &**ty else {
-        return Err(Error::new_spanned(ty, "response must be of type &mut AbiResponse"));
+    let Type::Reference(TypeReference {
+        mutability: Some(_),
+        elem,
+        ..
+    }) = &**ty
+    else {
+        return Err(Error::new_spanned(
+            ty,
+            "response must be of type &mut AbiResponse",
+        ));
     };
     let Type::Path(TypePath { path, .. }) = &**elem else {
-        return Err(Error::new_spanned(elem, "response must be of type &mut AbiResponse"));
+        return Err(Error::new_spanned(
+            elem,
+            "response must be of type &mut AbiResponse",
+        ));
     };
     let Some(seg) = path.segments.last() else {
-        return Err(Error::new_spanned(path, "response must be of type &mut AbiResponse"));
+        return Err(Error::new_spanned(
+            path,
+            "response must be of type &mut AbiResponse",
+        ));
     };
     if seg.ident != "AbiResponse" {
         return Err(Error::new_spanned(
@@ -182,4 +209,3 @@ fn validate_response_arg(arg: &FnArg) -> Result<()> {
     }
     Ok(())
 }
-

@@ -1,5 +1,5 @@
-use crate::worka_ui::{Action, BoolValue, NumberValue, StringArrayValue, StringValue};
 use super::Widget;
+use crate::worka_ui::{Action, BoolValue, NumberValue, StringArrayValue, StringValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Button {
@@ -10,7 +10,11 @@ pub struct Button {
 
 impl Button {
     pub fn new(child: impl Into<Widget>, action: Action) -> Self {
-        Self { child: Box::new(child.into()), action, primary: None }
+        Self {
+            child: Box::new(child.into()),
+            action,
+            primary: None,
+        }
     }
 
     pub fn primary(mut self, value: bool) -> Self {
@@ -73,7 +77,10 @@ pub struct CheckBox {
 
 impl CheckBox {
     pub fn new(label: impl Into<StringValue>, value: impl Into<BoolValue>) -> Self {
-        Self { label: label.into(), value: value.into() }
+        Self {
+            label: label.into(),
+            value: value.into(),
+        }
     }
 }
 
@@ -85,7 +92,10 @@ pub struct Modal {
 
 impl Modal {
     pub fn new(entry_point: impl Into<Widget>, content: impl Into<Widget>) -> Self {
-        Self { entry_point: Box::new(entry_point.into()), content: Box::new(content.into()) }
+        Self {
+            entry_point: Box::new(entry_point.into()),
+            content: Box::new(content.into()),
+        }
     }
 }
 
@@ -97,7 +107,10 @@ pub struct TabItem {
 
 impl TabItem {
     pub fn new(title: impl Into<StringValue>, child: impl Into<Widget>) -> Self {
-        Self { title: title.into(), child: child.into() }
+        Self {
+            title: title.into(),
+            child: child.into(),
+        }
     }
 }
 
@@ -120,7 +133,10 @@ pub struct ChoiceOption {
 
 impl ChoiceOption {
     pub fn new(label: impl Into<StringValue>, value: impl Into<String>) -> Self {
-        Self { label: label.into(), value: value.into() }
+        Self {
+            label: label.into(),
+            value: value.into(),
+        }
     }
 }
 
@@ -133,7 +149,11 @@ pub struct MultipleChoice {
 
 impl MultipleChoice {
     pub fn new(selections: impl Into<StringArrayValue>, options: Vec<ChoiceOption>) -> Self {
-        Self { selections: selections.into(), options, max_allowed_selections: None }
+        Self {
+            selections: selections.into(),
+            options,
+            max_allowed_selections: None,
+        }
     }
 
     pub fn max_allowed_selections(mut self, value: i64) -> Self {
@@ -151,7 +171,11 @@ pub struct Slider {
 
 impl Slider {
     pub fn new(value: impl Into<NumberValue>) -> Self {
-        Self { value: value.into(), min_value: None, max_value: None }
+        Self {
+            value: value.into(),
+            min_value: None,
+            max_value: None,
+        }
     }
 
     pub fn min(mut self, value: f64) -> Self {

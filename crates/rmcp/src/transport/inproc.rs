@@ -23,10 +23,7 @@ impl<R: ServiceRole> InprocTransport<R> {
         tx: mpsc::Sender<TxJsonRpcMessage<R>>,
         rx: mpsc::Receiver<RxJsonRpcMessage<R>>,
     ) -> Self {
-        Self {
-            tx: Some(tx),
-            rx,
-        }
+        Self { tx: Some(tx), rx }
     }
 }
 

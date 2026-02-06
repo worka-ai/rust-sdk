@@ -1,5 +1,5 @@
-use crate::worka_ui::StringValue;
 use super::Widget;
+use crate::worka_ui::StringValue;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Text {
@@ -9,7 +9,10 @@ pub struct Text {
 
 impl Text {
     pub fn new(text: impl Into<StringValue>) -> Self {
-        Self { text: text.into(), usage_hint: None }
+        Self {
+            text: text.into(),
+            usage_hint: None,
+        }
     }
 
     pub fn usage_hint(mut self, hint: impl Into<String>) -> Self {
@@ -27,7 +30,11 @@ pub struct Image {
 
 impl Image {
     pub fn new(url: impl Into<StringValue>) -> Self {
-        Self { url: url.into(), fit: None, usage_hint: None }
+        Self {
+            url: url.into(),
+            fit: None,
+            usage_hint: None,
+        }
     }
 
     pub fn fit(mut self, fit: impl Into<String>) -> Self {
@@ -59,11 +66,15 @@ pub struct Divider {
 
 impl Divider {
     pub fn horizontal() -> Self {
-        Self { axis: Some("horizontal".into()) }
+        Self {
+            axis: Some("horizontal".into()),
+        }
     }
 
     pub fn vertical() -> Self {
-        Self { axis: Some("vertical".into()) }
+        Self {
+            axis: Some("vertical".into()),
+        }
     }
 }
 
@@ -74,6 +85,8 @@ pub struct Card {
 
 impl Card {
     pub fn new(child: impl Into<Widget>) -> Self {
-        Self { child: Box::new(child.into()) }
+        Self {
+            child: Box::new(child.into()),
+        }
     }
 }

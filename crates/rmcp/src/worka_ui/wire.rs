@@ -15,11 +15,17 @@ pub(crate) struct StringRef {
 
 impl StringRef {
     pub fn literal(value: impl Into<String>) -> Self {
-        Self { path: None, literal_string: Some(value.into()) }
+        Self {
+            path: None,
+            literal_string: Some(value.into()),
+        }
     }
 
     pub fn path(path: impl Into<String>) -> Self {
-        Self { path: Some(path.into()), literal_string: None }
+        Self {
+            path: Some(path.into()),
+            literal_string: None,
+        }
     }
 }
 
@@ -33,11 +39,17 @@ pub(crate) struct NumberRef {
 
 impl NumberRef {
     pub fn literal(value: f64) -> Self {
-        Self { path: None, literal_number: Some(value) }
+        Self {
+            path: None,
+            literal_number: Some(value),
+        }
     }
 
     pub fn path(path: impl Into<String>) -> Self {
-        Self { path: Some(path.into()), literal_number: None }
+        Self {
+            path: Some(path.into()),
+            literal_number: None,
+        }
     }
 }
 
@@ -51,11 +63,17 @@ pub(crate) struct BoolRef {
 
 impl BoolRef {
     pub fn literal(value: bool) -> Self {
-        Self { path: None, literal_boolean: Some(value) }
+        Self {
+            path: None,
+            literal_boolean: Some(value),
+        }
     }
 
     pub fn path(path: impl Into<String>) -> Self {
-        Self { path: Some(path.into()), literal_boolean: None }
+        Self {
+            path: Some(path.into()),
+            literal_boolean: None,
+        }
     }
 }
 
@@ -69,11 +87,17 @@ pub(crate) struct StringArrayRef {
 
 impl StringArrayRef {
     pub fn literal(values: Vec<String>) -> Self {
-        Self { path: None, literal_array: Some(values) }
+        Self {
+            path: None,
+            literal_array: Some(values),
+        }
     }
 
     pub fn path(path: impl Into<String>) -> Self {
-        Self { path: Some(path.into()), literal_array: None }
+        Self {
+            path: Some(path.into()),
+            literal_array: None,
+        }
     }
 }
 
@@ -142,7 +166,10 @@ pub(crate) struct Action {
 
 impl Action {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), context: None }
+        Self {
+            name: name.into(),
+            context: None,
+        }
     }
 
     pub fn with_context(mut self, entries: Vec<ActionContextEntry>) -> Self {
@@ -169,7 +196,10 @@ pub(crate) struct ComponentChildren {
 
 impl ComponentChildren {
     pub fn explicit(ids: Vec<String>) -> Self {
-        Self { explicit_list: Some(ids), template: None }
+        Self {
+            explicit_list: Some(ids),
+            template: None,
+        }
     }
 
     pub fn template(component_id: impl Into<String>, data_binding: impl Into<String>) -> Self {
@@ -193,7 +223,11 @@ pub(crate) struct ComponentEntry {
 
 impl ComponentEntry {
     pub fn new(id: impl Into<String>, component: ComponentKind) -> Self {
-        Self { id: id.into(), weight: None, component }
+        Self {
+            id: id.into(),
+            weight: None,
+            component,
+        }
     }
 }
 
@@ -363,7 +397,10 @@ pub(crate) struct ChoiceOption {
 pub(crate) struct MultipleChoiceProps {
     pub selections: StringArrayRef,
     pub options: Vec<ChoiceOption>,
-    #[serde(rename = "maxAllowedSelections", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "maxAllowedSelections",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_allowed_selections: Option<i64>,
 }
 
@@ -516,4 +553,3 @@ pub(crate) enum A2uiMessage {
     #[serde(rename = "deleteSurface")]
     DeleteSurface(DeleteSurface),
 }
-

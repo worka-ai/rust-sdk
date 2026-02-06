@@ -61,7 +61,10 @@ pub struct ActionContextEntry {
 
 impl ActionContextEntry {
     pub fn new(key: impl Into<String>, value: impl Into<ActionValue>) -> Self {
-        Self { key: key.into(), value: value.into() }
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
     }
 }
 
@@ -73,7 +76,10 @@ pub struct Action {
 
 impl Action {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), context: Vec::new() }
+        Self {
+            name: name.into(),
+            context: Vec::new(),
+        }
     }
 
     pub fn with(mut self, key: impl Into<String>, value: impl Into<ActionValue>) -> Self {
@@ -97,4 +103,3 @@ impl Action {
         }
     }
 }
-

@@ -9,7 +9,11 @@ pub struct Row {
 
 impl Row {
     pub fn new(children: Children) -> Self {
-        Self { children, distribution: None, alignment: None }
+        Self {
+            children,
+            distribution: None,
+            alignment: None,
+        }
     }
 
     pub fn distribution(mut self, distribution: impl Into<String>) -> Self {
@@ -32,7 +36,11 @@ pub struct Column {
 
 impl Column {
     pub fn new(children: Children) -> Self {
-        Self { children, distribution: None, alignment: None }
+        Self {
+            children,
+            distribution: None,
+            alignment: None,
+        }
     }
 
     pub fn distribution(mut self, distribution: impl Into<String>) -> Self {
@@ -55,15 +63,27 @@ pub struct List {
 
 impl List {
     pub fn new(children: Children) -> Self {
-        Self { children, direction: None, alignment: None }
+        Self {
+            children,
+            direction: None,
+            alignment: None,
+        }
     }
 
     pub fn vertical(children: Children) -> Self {
-        Self { children, direction: Some("vertical".into()), alignment: None }
+        Self {
+            children,
+            direction: Some("vertical".into()),
+            alignment: None,
+        }
     }
 
     pub fn horizontal(children: Children) -> Self {
-        Self { children, direction: Some("horizontal".into()), alignment: None }
+        Self {
+            children,
+            direction: Some("horizontal".into()),
+            alignment: None,
+        }
     }
 
     pub fn alignment(mut self, alignment: impl Into<String>) -> Self {

@@ -18,16 +18,16 @@ mod wire;
 
 pub use action::{Action, ActionValue};
 pub use children::Children;
-pub use render::{render, RenderedTree, Surface};
+pub use render::{RenderedTree, Surface, render};
 pub use value::{BoolValue, NumberValue, StringArrayValue, StringValue};
 pub use widgets::*;
 
 /// Common imports for packs.
 pub mod prelude {
     pub use super::{
-        render, Action, AudioPlayer, BoolValue, Button, Card, CheckBox, ChoiceOption, Children,
-        Column, DateTimeInput, Divider, Icon, Image, List, Modal, MultipleChoice, NumberValue, Row,
-        Slider, StringArrayValue, StringValue, Surface, TabItem, Tabs, Text, TextField, Timeline,
-        TimelineGroup, TimelineItem, TimelineLane, Video,
+        Action, AudioPlayer, BoolValue, Button, Card, CheckBox, Children, ChoiceOption, Column,
+        DateTimeInput, Divider, Icon, Image, List, Modal, MultipleChoice, NumberValue, Row, Slider,
+        StringArrayValue, StringValue, Surface, TabItem, Tabs, Text, TextField, Timeline,
+        TimelineGroup, TimelineItem, TimelineLane, Video, render,
     };
 }

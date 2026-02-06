@@ -1,5 +1,5 @@
-use crate::worka_ui::{Action, BoolValue, Children, NumberValue, StringValue};
 use super::Widget;
+use crate::worka_ui::{Action, BoolValue, Children, NumberValue, StringValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Timeline {
@@ -184,7 +184,11 @@ pub struct TimelineLane {
 
 impl TimelineLane {
     pub fn new(lane_id: impl Into<String>, children: Children) -> Self {
-        Self { lane_id: lane_id.into(), title: None, children }
+        Self {
+            lane_id: lane_id.into(),
+            title: None,
+            children,
+        }
     }
 
     pub fn title(mut self, value: impl Into<StringValue>) -> Self {

@@ -1,6 +1,4 @@
-use crate::worka_ui::children::Children;
-use crate::worka_ui::widgets::Widget;
-use crate::worka_ui::wire;
+use crate::worka_ui::{children::Children, widgets::Widget, wire};
 
 /// A rendered widget tree ready to be embedded in a pack view payload.
 ///
@@ -29,7 +27,10 @@ pub fn render(root: impl Into<Widget>) -> RenderedTree {
         .into_iter()
         .map(|entry| serde_json::to_value(entry).unwrap_or(serde_json::Value::Null))
         .collect();
-    RenderedTree { root: rendered.root, components }
+    RenderedTree {
+        root: rendered.root,
+        components,
+    }
 }
 
 /// Convenience wrapper for packs that want the message-list form:
@@ -43,7 +44,11 @@ pub struct Surface {
 
 impl Surface {
     pub fn new(surface_id: impl Into<String>, root: impl Into<Widget>) -> Self {
-        Self { surface_id: surface_id.into(), root: root.into(), data_model: None }
+        Self {
+            surface_id: surface_id.into(),
+            root: root.into(),
+            data_model: None,
+        }
     }
 
     pub fn data_model(mut self, contents: serde_json::Value) -> Self {
@@ -93,7 +98,10 @@ struct WireTree {
 fn render_wire(root: Widget) -> WireTree {
     let mut renderer = Renderer::new();
     let root_id = renderer.render_widget(root);
-    WireTree { root: root_id, components: renderer.components }
+    WireTree {
+        root: root_id,
+        components: renderer.components,
+    }
 }
 
 struct Renderer {
@@ -103,7 +111,10 @@ struct Renderer {
 
 impl Renderer {
     fn new() -> Self {
-        Self { next_id: 0, components: Vec::new() }
+        Self {
+            next_id: 0,
+            components: Vec::new(),
+        }
     }
 
     fn alloc_id(&mut self) -> String {
@@ -118,7 +129,10 @@ impl Renderer {
                 let ids = items.into_iter().map(|w| self.render_widget(w)).collect();
                 wire::ComponentChildren::explicit(ids)
             }
-            Children::Template { data_binding, template } => {
+            Children::Template {
+                data_binding,
+                template,
+            } => {
                 let template_id = self.render_widget(*template);
                 wire::ComponentChildren::template(template_id, data_binding)
             }
