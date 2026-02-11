@@ -1,3 +1,4 @@
+use super::Widget;
 use crate::worka_ui::Children;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,5 +90,24 @@ impl List {
     pub fn alignment(mut self, alignment: impl Into<String>) -> Self {
         self.alignment = Some(alignment.into());
         self
+    }
+}
+
+/// A wrapper that assigns a flex weight to its child when placed in a `Row` or `Column`.
+///
+/// This maps to GenUI's `Component.weight` field, which the Flutter host uses to wrap
+/// the child in a `Flexible(flex: weight)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Flexible {
+    pub flex: i64,
+    pub child: Box<Widget>,
+}
+
+impl Flexible {
+    pub fn new(flex: i64, child: impl Into<Widget>) -> Self {
+        Self {
+            flex,
+            child: Box::new(child.into()),
+        }
     }
 }

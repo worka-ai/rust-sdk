@@ -26,8 +26,8 @@ pub use widgets::*;
 pub mod prelude {
     pub use super::{
         Action, AudioPlayer, BoolValue, Button, Card, CheckBox, Children, ChoiceOption, Column,
-        DateTimeInput, Divider, Icon, Image, List, Modal, MultipleChoice, NumberValue, Row, Slider,
-        StringArrayValue, StringValue, Surface, TabItem, Tabs, Text, TextField, Timeline,
-        TimelineGroup, TimelineItem, TimelineLane, Video, render,
+        DateTimeInput, Divider, Flexible, Icon, Image, List, Modal, MultipleChoice, NumberValue,
+        Row, Slider, StringArrayValue, StringValue, Surface, TabItem, Tabs, Text, TextField,
+        Timeline, TimelineGroup, TimelineItem, TimelineLane, Video, render,
     };
 }

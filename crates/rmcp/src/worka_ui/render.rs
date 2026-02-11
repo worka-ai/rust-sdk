@@ -221,6 +221,19 @@ impl Renderer {
                 ));
                 id
             }
+            Widget::Flexible(widget) => {
+                let child_id = self.render_widget(*widget.child);
+
+                if let Some(entry) = self
+                    .components
+                    .iter_mut()
+                    .find(|entry| entry.id == child_id)
+                {
+                    entry.weight = Some(widget.flex);
+                }
+
+                child_id
+            }
             Widget::Button(widget) => {
                 let child_id = self.render_widget(*widget.child);
                 let id = self.alloc_id();

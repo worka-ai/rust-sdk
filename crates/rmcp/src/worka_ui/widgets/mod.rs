@@ -9,7 +9,7 @@ pub use controls::{
     Button, CheckBox, ChoiceOption, DateTimeInput, Modal, MultipleChoice, Slider, TabItem, Tabs,
     TextField,
 };
-pub use layout::{Column, List, Row};
+pub use layout::{Column, Flexible, List, Row};
 pub use media::{AudioPlayer, Video};
 pub use timeline::{Timeline, TimelineGroup, TimelineItem, TimelineLane};
 
@@ -22,6 +22,7 @@ pub enum Widget {
     Row(Row),
     Column(Column),
     List(List),
+    Flexible(Flexible),
     Button(Button),
     TextField(TextField),
     CheckBox(CheckBox),
@@ -72,6 +73,11 @@ impl From<Column> for Widget {
 impl From<List> for Widget {
     fn from(value: List) -> Self {
         Widget::List(value)
+    }
+}
+impl From<Flexible> for Widget {
+    fn from(value: Flexible) -> Self {
+        Widget::Flexible(value)
     }
 }
 impl From<Button> for Widget {

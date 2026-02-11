@@ -217,7 +217,7 @@ impl ComponentChildren {
 pub(crate) struct ComponentEntry {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f64>,
+    pub weight: Option<i64>,
     pub component: ComponentKind,
 }
 
