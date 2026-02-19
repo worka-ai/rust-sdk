@@ -122,8 +122,7 @@ pub fn tool_router(attr: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// The macro will generate:
-/// - `worka_init`
-/// - `worka_handle_request`
+/// - `worka_host_call`
 /// - `worka_alloc`
 /// - `worka_free`
 #[proc_macro_attribute]

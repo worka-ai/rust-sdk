@@ -22,10 +22,7 @@ pub fn worka(attr: TokenStream, input: TokenStream) -> Result<TokenStream> {
         #dispatch_fn
 
         #[unsafe(no_mangle)]
-        pub extern "C" fn worka_init() {}
-
-        #[unsafe(no_mangle)]
-        pub extern "C" fn worka_handle_request(ptr: u32, len: u32) -> u64 {
+        pub extern "C" fn worka_host_call(ptr: u32, len: u32) -> u64 {
             let req_bytes = unsafe { __worka_slice_from_raw(ptr, len) };
             let envelope = <::runtime_proto::runtime::AbiEnvelope as ::prost::Message>::decode(req_bytes)
                 .unwrap();
