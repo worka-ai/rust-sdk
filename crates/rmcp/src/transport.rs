@@ -125,6 +125,8 @@ pub use streamable_http_client::StreamableHttpClientTransport;
 /// Common use codes
 pub mod common;
 
+pub mod broker;
+
 pub trait Transport<R>: Send
 where
     R: ServiceRole,
