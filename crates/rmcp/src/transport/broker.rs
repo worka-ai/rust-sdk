@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use tokio::net::UnixStream;
 use tokio::io::{AsyncBufReadExt, BufReader, AsyncWriteExt};
 use tokio_util::codec::{FramedRead, FramedWrite, Decoder, Encoder};
-use tokio_util::bytes::{BytesMut, BufMut, Buf};
+use tokio_util::bytes::{BytesMut, BufMut};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 use futures::{SinkExt, StreamExt};
 
 use crate::model::{JsonRpcMessage};
@@ -17,33 +17,42 @@ use crate::transport::{Transport, DynamicTransportError};
 
 pub struct BrokerTransport<R: ServiceRole> {
     reader: FramedRead<tokio::net::unix::OwnedReadHalf, BrokerCodec<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>>,
-    writer: Arc<Mutex<Option<FramedWrite<tokio::net::unix::OwnedWriteHalf, BrokerCodec<JsonRpcMessage<R::Req, R::Resp, R::Not>>>>>>,
+    tx: mpsc::Sender<JsonRpcMessage<R::Req, R::Resp, R::Not>>,
 }
 
 impl<R: ServiceRole> BrokerTransport<R> {
     pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
         let stream = UnixStream::connect(path).await?;
         let (read_half, write_half) = stream.into_split();
+        
+        let (tx, mut rx) = mpsc::channel::<JsonRpcMessage<R::Req, R::Resp, R::Not>>(64);
+        
+        tokio::spawn(async move {
+            let mut writer = FramedWrite::new(write_half, BrokerCodec::default());
+            while let Some(msg) = rx.recv().await {
+                if let Err(e) = writer.send(msg).await {
+                    tracing::error!("BrokerTransport writer error: {}", e);
+                    break;
+                }
+            }
+            let _ = writer.get_mut().shutdown().await;
+        });
+
         Ok(Self {
             reader: FramedRead::new(read_half, BrokerCodec::default()),
-            writer: Arc::new(Mutex::new(Some(FramedWrite::new(write_half, BrokerCodec::default())))),
+            tx,
         })
     }
 }
 
 #[async_trait]
 impl<R: ServiceRole> Transport<R> for BrokerTransport<R> {
-    type Error = anyhow::Error;
+    type Error = std::io::Error;
 
     fn send(&mut self, message: JsonRpcMessage<R::Req, R::Resp, R::Not>) -> impl Future<Output = Result<(), Self::Error>> + Send + 'static {
-        let writer_lock = self.writer.clone();
+        let tx = self.tx.clone();
         async move {
-            let mut writer = writer_lock.lock().await;
-            if let Some(ref mut w) = *writer {
-                w.send(message).await.map_err(|e| anyhow!(e))
-            } else {
-                Err(anyhow!("Transport closed"))
-            }
+            tx.send(message).await.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
         }
     }
 
@@ -55,14 +64,9 @@ impl<R: ServiceRole> Transport<R> for BrokerTransport<R> {
     }
 
     fn close(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        let writer_lock = self.writer.clone();
+        let _ = self.tx.clone(); 
         async move {
-            let mut writer = writer_lock.lock().await;
-            if let Some(mut w) = writer.take() {
-                w.get_mut().shutdown().await.map_err(|e| anyhow!(e))
-            } else {
-                Ok(())
-            }
+            Ok(())
         }
     }
 }
@@ -79,12 +83,12 @@ impl<T> Default for BrokerCodec<T> {
 
 impl<T: for<'de> Deserialize<'de>> Decoder for BrokerCodec<T> {
     type Item = T;
-    type Error = anyhow::Error;
+    type Error = std::io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if let Some(pos) = src.iter().position(|&b| b == b'\n') {
             let line = src.split_to(pos + 1);
-            let item = serde_json::from_slice(&line[..pos])?;
+            let item = serde_json::from_slice(&line[..pos]).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             Ok(Some(item))
         } else {
             Ok(None)
@@ -93,10 +97,10 @@ impl<T: for<'de> Deserialize<'de>> Decoder for BrokerCodec<T> {
 }
 
 impl<T: Serialize> Encoder<T> for BrokerCodec<T> {
-    type Error = anyhow::Error;
+    type Error = std::io::Error;
 
     fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let json = serde_json::to_vec(&item)?;
+        let json = serde_json::to_vec(&item).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         dst.extend_from_slice(&json);
         dst.put_u8(b'\n');
         Ok(())
@@ -143,9 +147,8 @@ impl BrokerClient {
         };
 
         let mut stream = UnixStream::connect(&self.socket_path).await?;
-        let mut buf = serde_json::to_vec(&req)?;
-        buf.push(b'\n');
-        stream.write_all(&buf).await?;
+        stream.write_all(&serde_json::to_vec(&req)?).await?;
+        stream.write_all(b"\n").await?;
 
         let mut reader = BufReader::new(stream);
         let mut line = String::new();

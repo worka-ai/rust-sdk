@@ -18,10 +18,11 @@ async-trait = "0.1.89"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 thiserror = "2"
-tokio = { version = "1", features = ["sync", "macros", "rt", "time"] }
+tokio = { version = "1", features = ["sync", "macros", "rt", "time", "net"] }
 futures = "0.3"
 tracing = { version = "0.1" }
-tokio-util = { version = "0.7" }
+tokio-util = { version = "0.7", features = ["codec"] }
+anyhow = "1.0"
 pin-project-lite = "0.2"
 pastey = { version = "0.2.0", optional = true }
 # oauth2 support
@@ -117,6 +118,7 @@ transport-child-process = [
   "tokio/process",
   "dep:process-wrap",
 ]
+transport-broker = ["transport-async-rw", "tokio/net"]
 transport-streamable-http-server = [
   "transport-streamable-http-server-session",
   "server-side-http",
