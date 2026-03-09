@@ -1,10 +1,8 @@
 use anyhow::Result;
-use async_trait::async_trait;
 use reqwest::Client as HttpClient;
 
 use crate::model::{CompletionRequest, CompletionResponse};
 
-#[async_trait]
 pub trait ChatClient: Send + Sync {
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse>;
 }
@@ -41,7 +39,6 @@ impl OpenAIClient {
     }
 }
 
-#[async_trait]
 impl ChatClient for OpenAIClient {
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse> {
         let response = self

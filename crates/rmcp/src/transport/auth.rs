@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use async_trait::async_trait;
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EmptyExtraTokenFields,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, RequestTokenError, Scope,
@@ -30,7 +29,6 @@ pub struct StoredCredentials {
 /// Implementations of this trait can provide custom storage backends
 /// for OAuth2 credentials, such as file-based storage, keychain integration,
 /// or database storage.
-#[async_trait]
 pub trait CredentialStore: Send + Sync {
     async fn load(&self) -> Result<Option<StoredCredentials>, AuthError>;
 
@@ -57,7 +55,6 @@ impl InMemoryCredentialStore {
     }
 }
 
-#[async_trait::async_trait]
 impl CredentialStore for InMemoryCredentialStore {
     async fn load(&self) -> Result<Option<StoredCredentials>, AuthError> {
         Ok(self.credentials.read().await.clone())

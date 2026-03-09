@@ -1,6 +1,5 @@
 use std::future::Future;
 use anyhow::{Result, anyhow};
-use async_trait::async_trait;
 use tokio::net::UnixStream;
 use tokio::io::{AsyncBufReadExt, BufReader, AsyncWriteExt};
 use tokio_util::codec::{FramedRead, FramedWrite, Decoder, Encoder};
@@ -45,7 +44,6 @@ impl<R: ServiceRole> BrokerTransport<R> {
     }
 }
 
-#[async_trait]
 impl<R: ServiceRole> Transport<R> for BrokerTransport<R> {
     type Error = std::io::Error;
 

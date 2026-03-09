@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
-use async_trait::async_trait;
 use rmcp::{
     RoleClient,
     model::{CallToolRequestParam, CallToolResult, Tool as McpTool},
@@ -14,7 +13,6 @@ use crate::{
     model::{Content, ToolResult},
 };
 
-#[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> String;
     fn description(&self) -> String;
@@ -33,7 +31,6 @@ impl McpToolAdapter {
     }
 }
 
-#[async_trait]
 impl Tool for McpToolAdapter {
     fn name(&self) -> String {
         self.tool.name.clone().to_string()

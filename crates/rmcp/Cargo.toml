@@ -14,7 +14,6 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-async-trait = "0.1.89"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 thiserror = "2"
@@ -144,7 +143,6 @@ tracing-subscriber = { version = "0.3", features = [
   "std",
   "fmt",
 ] }
-async-trait = "0.1"
 [[test]]
 name = "test_tool_macros"
 required-features = ["server", "client"]
