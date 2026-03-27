@@ -125,13 +125,26 @@ pub struct BrokerSocketResponse {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Patch,
+    Head,
+    Options,
+    Trace,
+}
+
 impl BrokerClient {
     pub fn new() -> Self {
         let path = std::env::var("WORKA_BROKER_SOCKET").unwrap_or_else(|_| "/run/worka/broker.sock".to_string());
         Self { socket_path: path }
     }
 
-    pub async fn http_request(&self, invocation_id: &str, ucan: &str, method: &str, url: &str, body: Option<JsonValue>) -> Result<JsonValue> {
+    pub async fn http_request(&self, invocation_id: &str, ucan: &str, method: HttpMethod, url: &str, headers: Option<serde_json::Map<String, JsonValue>>, body: Option<JsonValue>) -> Result<JsonValue> {
         let req = BrokerSocketRequest {
             invocation_id: invocation_id.to_string(),
             ucan: ucan.to_string(),
@@ -140,23 +153,47 @@ impl BrokerClient {
             args: serde_json::json!({
                 "method": method,
                 "url": url,
+                "headers": headers,
                 "body": body,
             }),
         };
 
-        let mut stream = UnixStream::connect(&self.socket_path).await?;
-        stream.write_all(&serde_json::to_vec(&req)?).await?;
-        stream.write_all(b"\n").await?;
+        if self.socket_path.contains(':') {
+            // TCP
+            let stream = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::net::TcpStream::connect(&self.socket_path)
+            ).await.map_err(|_| anyhow!("Broker connect timeout (TCP)"))??;
+            let mut stream = stream;
+            stream.write_all(&serde_json::to_vec(&req)?).await?;
+            stream.write_all(b"\n").await?;
 
-        let mut reader = BufReader::new(stream);
-        let mut line = String::new();
-        reader.read_line(&mut line).await?;
-        
-        let res: BrokerSocketResponse = serde_json::from_str(&line)?;
-        if res.ok {
-            Ok(res.value)
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).await?;
+            
+            let res: BrokerSocketResponse = serde_json::from_str(&line)?;
+            if res.ok {
+                Ok(res.value)
+            } else {
+                Err(anyhow!(res.error.unwrap_or_else(|| "Unknown broker error".to_string())))
+            }
         } else {
-            Err(anyhow!(res.error.unwrap_or_else(|| "Unknown broker error".to_string())))
+            // Unix
+            let mut stream = UnixStream::connect(&self.socket_path).await?;
+            stream.write_all(&serde_json::to_vec(&req)?).await?;
+            stream.write_all(b"\n").await?;
+
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).await?;
+            
+            let res: BrokerSocketResponse = serde_json::from_str(&line)?;
+            if res.ok {
+                Ok(res.value)
+            } else {
+                Err(anyhow!(res.error.unwrap_or_else(|| "Unknown broker error".to_string())))
+            }
         }
     }
 }
