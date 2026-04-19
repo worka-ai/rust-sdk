@@ -171,6 +171,7 @@ impl BrokerClient {
         headers: Option<serde_json::Map<String, JsonValue>>,
         body: Option<JsonValue>,
     ) -> Result<JsonValue> {
+        let headers = headers.unwrap_or_default();
         let req = BrokerSocketRequest {
             invocation_id: invocation_id.to_string(),
             ucan: ucan.to_string(),
