@@ -20,15 +20,15 @@ use crate::{
     transport::{DynamicTransportError, Transport},
 };
 
-pub struct BrokerTransport<R: ServiceRole> {
+pub struct WorkaTransport<R: ServiceRole> {
     reader: FramedRead<
         tokio::net::unix::OwnedReadHalf,
-        BrokerCodec<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>,
+        WorkaCodec<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>,
     >,
     tx: mpsc::Sender<JsonRpcMessage<R::Req, R::Resp, R::Not>>,
 }
 
-impl<R: ServiceRole> BrokerTransport<R> {
+impl<R: ServiceRole> WorkaTransport<R> {
     pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
         let stream = UnixStream::connect(path).await?;
         let (read_half, write_half) = stream.into_split();
@@ -36,10 +36,10 @@ impl<R: ServiceRole> BrokerTransport<R> {
         let (tx, mut rx) = mpsc::channel::<JsonRpcMessage<R::Req, R::Resp, R::Not>>(64);
 
         tokio::spawn(async move {
-            let mut writer = FramedWrite::new(write_half, BrokerCodec::default());
+            let mut writer = FramedWrite::new(write_half, WorkaCodec::default());
             while let Some(msg) = rx.recv().await {
                 if let Err(e) = writer.send(msg).await {
-                    tracing::error!("BrokerTransport writer error: {}", e);
+                    tracing::error!("WorkaTransport writer error: {}", e);
                     break;
                 }
             }
@@ -47,13 +47,13 @@ impl<R: ServiceRole> BrokerTransport<R> {
         });
 
         Ok(Self {
-            reader: FramedRead::new(read_half, BrokerCodec::default()),
+            reader: FramedRead::new(read_half, WorkaCodec::default()),
             tx,
         })
     }
 }
 
-impl<R: ServiceRole> Transport<R> for BrokerTransport<R> {
+impl<R: ServiceRole> Transport<R> for WorkaTransport<R> {
     type Error = std::io::Error;
 
     fn send(
@@ -82,11 +82,11 @@ impl<R: ServiceRole> Transport<R> for BrokerTransport<R> {
     }
 }
 
-pub struct BrokerCodec<T> {
+pub struct WorkaCodec<T> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T> Default for BrokerCodec<T> {
+impl<T> Default for WorkaCodec<T> {
     fn default() -> Self {
         Self {
             _phantom: std::marker::PhantomData,
@@ -94,7 +94,7 @@ impl<T> Default for BrokerCodec<T> {
     }
 }
 
-impl<T: for<'de> Deserialize<'de>> Decoder for BrokerCodec<T> {
+impl<T: for<'de> Deserialize<'de>> Decoder for WorkaCodec<T> {
     type Item = T;
     type Error = std::io::Error;
 
@@ -110,7 +110,7 @@ impl<T: for<'de> Deserialize<'de>> Decoder for BrokerCodec<T> {
     }
 }
 
-impl<T: Serialize> Encoder<T> for BrokerCodec<T> {
+impl<T: Serialize> Encoder<T> for WorkaCodec<T> {
     type Error = std::io::Error;
 
     fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -122,12 +122,12 @@ impl<T: Serialize> Encoder<T> for BrokerCodec<T> {
     }
 }
 
-pub struct BrokerClient {
+pub struct WorkaClient {
     socket_path: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct BrokerSocketRequest {
+pub struct WorkaSocketRequest {
     pub invocation_id: String,
     pub ucan: String,
     pub cap: Option<String>,
@@ -136,7 +136,7 @@ pub struct BrokerSocketRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct BrokerSocketResponse {
+pub struct WorkaSocketResponse {
     pub ok: bool,
     pub value: JsonValue,
     pub error: Option<String>,
@@ -155,7 +155,7 @@ pub enum HttpMethod {
     Trace,
 }
 
-impl BrokerClient {
+impl WorkaClient {
     pub fn new() -> Self {
         let path = std::env::var("WORKA_BROKER_SOCKET")
             .unwrap_or_else(|_| "/run/worka/broker.sock".to_string());
@@ -172,7 +172,7 @@ impl BrokerClient {
         body: Option<JsonValue>,
     ) -> Result<JsonValue> {
         let headers = headers.unwrap_or_default();
-        let req = BrokerSocketRequest {
+        let req = WorkaSocketRequest {
             invocation_id: invocation_id.to_string(),
             ucan: ucan.to_string(),
             cap: None,
@@ -192,7 +192,7 @@ impl BrokerClient {
                 tokio::net::TcpStream::connect(&self.socket_path),
             )
             .await
-            .map_err(|_| anyhow!("Broker connect timeout (TCP)"))??;
+            .map_err(|_| anyhow!("Worka connect timeout (TCP)"))??;
             let mut stream = stream;
             stream.write_all(&serde_json::to_vec(&req)?).await?;
             stream.write_all(b"\n").await?;
@@ -201,13 +201,13 @@ impl BrokerClient {
             let mut line = String::new();
             reader.read_line(&mut line).await?;
 
-            let res: BrokerSocketResponse = serde_json::from_str(&line)?;
+            let res: WorkaSocketResponse = serde_json::from_str(&line)?;
             if res.ok {
                 Ok(res.value)
             } else {
                 Err(anyhow!(
                     res.error
-                        .unwrap_or_else(|| "Unknown broker error".to_string())
+                        .unwrap_or_else(|| "Unknown worka error".to_string())
                 ))
             }
         } else {
@@ -220,13 +220,13 @@ impl BrokerClient {
             let mut line = String::new();
             reader.read_line(&mut line).await?;
 
-            let res: BrokerSocketResponse = serde_json::from_str(&line)?;
+            let res: WorkaSocketResponse = serde_json::from_str(&line)?;
             if res.ok {
                 Ok(res.value)
             } else {
                 Err(anyhow!(
                     res.error
-                        .unwrap_or_else(|| "Unknown broker error".to_string())
+                        .unwrap_or_else(|| "Unknown worka error".to_string())
                 ))
             }
         }
