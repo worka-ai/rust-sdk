@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc};
+use std::future::Future;
 
 use anyhow::{Result, anyhow};
 use futures::{SinkExt, StreamExt};
@@ -7,18 +7,14 @@ use serde_json::Value as JsonValue;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
-    sync::{Mutex, mpsc},
+    sync::mpsc,
 };
 use tokio_util::{
     bytes::{BufMut, BytesMut},
     codec::{Decoder, Encoder, FramedRead, FramedWrite},
 };
 
-use crate::{
-    model::JsonRpcMessage,
-    service::ServiceRole,
-    transport::{DynamicTransportError, Transport},
-};
+use crate::{model::JsonRpcMessage, service::ServiceRole, transport::Transport};
 
 pub struct WorkaTransport<R: ServiceRole> {
     reader: FramedRead<
@@ -30,7 +26,8 @@ pub struct WorkaTransport<R: ServiceRole> {
 
 impl<R: ServiceRole> WorkaTransport<R> {
     pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let stream = UnixStream::connect(path).await?;
+        let mut stream = UnixStream::connect(path).await?;
+        register_pack_session_if_configured(&mut stream).await?;
         let (read_half, write_half) = stream.into_split();
 
         let (tx, mut rx) = mpsc::channel::<JsonRpcMessage<R::Req, R::Resp, R::Not>>(64);
@@ -53,6 +50,28 @@ impl<R: ServiceRole> WorkaTransport<R> {
     }
 }
 
+async fn register_pack_session_if_configured(stream: &mut UnixStream) -> Result<()> {
+    let Ok(session_id) = std::env::var("WORKA_PACK_SESSION_ID") else {
+        return Ok(());
+    };
+    let request = WorkaSocketRequest {
+        invocation_id: format!("register:{session_id}"),
+        parent_invocation_id: None,
+        ucan: std::env::var("WORKA_PACK_BOOTSTRAP_UCAN").unwrap_or_default(),
+        cap: None,
+        op: "worka.register_pack_session".to_string(),
+        args: serde_json::json!({
+            "session_id": session_id,
+            "pack_tenant": std::env::var("WORKA_PACK_TENANT").unwrap_or_default(),
+            "pack_name": std::env::var("WORKA_PACK_NAME").unwrap_or_default(),
+        }),
+    };
+    stream.write_all(&serde_json::to_vec(&request)?).await?;
+    stream.write_all(b"\n").await?;
+    stream.flush().await?;
+    Ok(())
+}
+
 impl<R: ServiceRole> Transport<R> for WorkaTransport<R> {
     type Error = std::io::Error;
 
@@ -72,7 +91,7 @@ impl<R: ServiceRole> Transport<R> for WorkaTransport<R> {
         &mut self,
     ) -> impl Future<Output = Option<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>> + Send
     {
-        let mut reader = &mut self.reader;
+        let reader = &mut self.reader;
         async move { reader.next().await.and_then(|r| r.ok()) }
     }
 
@@ -101,7 +120,24 @@ impl<T: for<'de> Deserialize<'de>> Decoder for WorkaCodec<T> {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if let Some(pos) = src.iter().position(|&b| b == b'\n') {
             let line = src.split_to(pos + 1);
-            let item = serde_json::from_slice(&line[..pos])
+            let value: JsonValue = serde_json::from_slice(&line[..pos])
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let item_value = match value.get("op").and_then(|op| op.as_str()) {
+                Some("mcp") => value.get("args").cloned().ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Worka mcp frame missing args",
+                    )
+                })?,
+                Some(other) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("unsupported Worka transport op `{other}`"),
+                    ));
+                }
+                None => value,
+            };
+            let item = serde_json::from_value(item_value)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             Ok(Some(item))
         } else {
@@ -114,12 +150,43 @@ impl<T: Serialize> Encoder<T> for WorkaCodec<T> {
     type Error = std::io::Error;
 
     fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let json = serde_json::to_vec(&item)
+        let value = serde_json::to_value(&item)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let response = WorkaSocketResponse {
+            invocation_id: Some(mcp_invocation_id(&value)),
+            ok: true,
+            value,
+            error: None,
+        };
+        let json = serde_json::to_vec(&response)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         dst.extend_from_slice(&json);
         dst.put_u8(b'\n');
         Ok(())
     }
+}
+
+fn mcp_invocation_id(value: &JsonValue) -> String {
+    match value.get("id") {
+        Some(JsonValue::String(id)) => id.clone(),
+        Some(JsonValue::Number(id)) => format!("mcp-{id}"),
+        Some(other) => format!("mcp-{}", stable_json_fragment(other)),
+        None => {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or_default();
+            format!("mcp-notification-{nanos}")
+        }
+    }
+}
+
+fn stable_json_fragment(value: &JsonValue) -> String {
+    serde_json::to_string(value)
+        .unwrap_or_else(|_| "unknown".to_string())
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect()
 }
 
 pub struct WorkaClient {
@@ -129,6 +196,8 @@ pub struct WorkaClient {
 #[derive(Serialize, Deserialize)]
 pub struct WorkaSocketRequest {
     pub invocation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_invocation_id: Option<String>,
     pub ucan: String,
     pub cap: Option<String>,
     pub op: String,
@@ -137,6 +206,8 @@ pub struct WorkaSocketRequest {
 
 #[derive(Serialize, Deserialize)]
 pub struct WorkaSocketResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invocation_id: Option<String>,
     pub ok: bool,
     pub value: JsonValue,
     pub error: Option<String>,
@@ -171,9 +242,24 @@ impl WorkaClient {
         headers: Option<serde_json::Map<String, JsonValue>>,
         body: Option<JsonValue>,
     ) -> Result<JsonValue> {
+        self.http_request_with_parent(invocation_id, None, ucan, method, url, headers, body)
+            .await
+    }
+
+    pub async fn http_request_with_parent(
+        &self,
+        invocation_id: &str,
+        parent_invocation_id: Option<&str>,
+        ucan: &str,
+        method: HttpMethod,
+        url: &str,
+        headers: Option<serde_json::Map<String, JsonValue>>,
+        body: Option<JsonValue>,
+    ) -> Result<JsonValue> {
         let headers = headers.unwrap_or_default();
         let req = WorkaSocketRequest {
             invocation_id: invocation_id.to_string(),
+            parent_invocation_id: parent_invocation_id.map(str::to_string),
             ucan: ucan.to_string(),
             cap: None,
             op: "http.request".to_string(),
@@ -185,6 +271,10 @@ impl WorkaClient {
             }),
         };
 
+        self.send_request(req).await
+    }
+
+    pub async fn send_request(&self, req: WorkaSocketRequest) -> Result<JsonValue> {
         if self.socket_path.contains(':') {
             // TCP
             let stream = tokio::time::timeout(
@@ -202,6 +292,13 @@ impl WorkaClient {
             reader.read_line(&mut line).await?;
 
             let res: WorkaSocketResponse = serde_json::from_str(&line)?;
+            if res.invocation_id.as_deref() != Some(req.invocation_id.as_str()) {
+                return Err(anyhow!(
+                    "Worka response invocation_id mismatch: expected {}, got {:?}",
+                    req.invocation_id,
+                    res.invocation_id
+                ));
+            }
             if res.ok {
                 Ok(res.value)
             } else {
@@ -221,6 +318,13 @@ impl WorkaClient {
             reader.read_line(&mut line).await?;
 
             let res: WorkaSocketResponse = serde_json::from_str(&line)?;
+            if res.invocation_id.as_deref() != Some(req.invocation_id.as_str()) {
+                return Err(anyhow!(
+                    "Worka response invocation_id mismatch: expected {}, got {:?}",
+                    req.invocation_id,
+                    res.invocation_id
+                ));
+            }
             if res.ok {
                 Ok(res.value)
             } else {
@@ -230,5 +334,44 @@ impl WorkaClient {
                 ))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codec_decodes_mcp_envelope_args() {
+        let mut codec = WorkaCodec::<JsonValue>::default();
+        let mut bytes = BytesMut::from(
+            br#"{"invocation_id":"mcp-1","ucan":"u","op":"mcp","args":{"jsonrpc":"2.0","id":1,"method":"tools/call"}}"#
+                .as_slice(),
+        );
+        bytes.put_u8(b'\n');
+
+        let decoded = codec.decode(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(decoded["method"], "tools/call");
+        assert_eq!(decoded["id"], 1);
+    }
+
+    #[test]
+    fn codec_encodes_json_rpc_as_worka_response() {
+        let mut codec = WorkaCodec::<JsonValue>::default();
+        let mut bytes = BytesMut::new();
+
+        codec
+            .encode(
+                serde_json::json!({"jsonrpc": "2.0", "id": 7, "result": {"ok": true}}),
+                &mut bytes,
+            )
+            .unwrap();
+        let response: WorkaSocketResponse =
+            serde_json::from_slice(&bytes[..bytes.len() - 1]).expect("encoded response");
+
+        assert_eq!(response.invocation_id.as_deref(), Some("mcp-7"));
+        assert!(response.ok);
+        assert_eq!(response.value["result"]["ok"], true);
     }
 }
