@@ -189,11 +189,12 @@ fn stable_json_fragment(value: &JsonValue) -> String {
         .collect()
 }
 
+#[derive(Debug, Clone)]
 pub struct WorkaClient {
     socket_path: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkaSocketRequest {
     pub invocation_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -204,7 +205,7 @@ pub struct WorkaSocketRequest {
     pub args: JsonValue,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkaSocketResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub invocation_id: Option<String>,
@@ -373,5 +374,16 @@ mod tests {
         assert_eq!(response.invocation_id.as_deref(), Some("mcp-7"));
         assert!(response.ok);
         assert_eq!(response.value["result"]["ok"], true);
+    }
+
+    #[test]
+    fn worka_client_is_debug_and_clone_for_generated_pack_servers() {
+        let client = WorkaClient {
+            socket_path: "/run/worka/broker.sock".to_string(),
+        };
+        let cloned = client.clone();
+
+        assert!(format!("{client:?}").contains("WorkaClient"));
+        assert_eq!(cloned.socket_path, "/run/worka/broker.sock");
     }
 }
