@@ -194,6 +194,34 @@ pub struct WorkaClient {
     socket_path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkaInvocationMeta {
+    pub invocation_id: String,
+    pub ucan: String,
+}
+
+impl WorkaInvocationMeta {
+    pub fn from_meta(meta: &crate::model::Meta) -> Result<Self> {
+        let invocation_id = meta
+            .get("invocation_id")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("Worka MCP request metadata is missing invocation_id"))?;
+        let ucan = meta
+            .get("ucan")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("Worka MCP request metadata is missing ucan"))?;
+
+        Ok(Self {
+            invocation_id: invocation_id.to_string(),
+            ucan: ucan.to_string(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkaSocketRequest {
     pub invocation_id: String,
@@ -245,6 +273,27 @@ impl WorkaClient {
     ) -> Result<JsonValue> {
         self.http_request_with_parent(invocation_id, None, ucan, method, url, headers, body)
             .await
+    }
+
+    pub async fn http_request_for_invocation(
+        &self,
+        invocation: &WorkaInvocationMeta,
+        child_invocation_id: &str,
+        method: HttpMethod,
+        url: &str,
+        headers: Option<serde_json::Map<String, JsonValue>>,
+        body: Option<JsonValue>,
+    ) -> Result<JsonValue> {
+        self.http_request_with_parent(
+            child_invocation_id,
+            Some(&invocation.invocation_id),
+            &invocation.ucan,
+            method,
+            url,
+            headers,
+            body,
+        )
+        .await
     }
 
     pub async fn http_request_with_parent(
@@ -385,5 +434,33 @@ mod tests {
 
         assert!(format!("{client:?}").contains("WorkaClient"));
         assert_eq!(cloned.socket_path, "/run/worka/broker.sock");
+    }
+
+    #[test]
+    fn worka_invocation_meta_extracts_ucan_and_invocation_id() {
+        let mut meta = crate::model::Meta::new();
+        meta.insert(
+            "invocation_id".to_string(),
+            JsonValue::String("inv-1".to_string()),
+        );
+        meta.insert("ucan".to_string(), JsonValue::String("token".to_string()));
+
+        let invocation = WorkaInvocationMeta::from_meta(&meta).unwrap();
+
+        assert_eq!(invocation.invocation_id, "inv-1");
+        assert_eq!(invocation.ucan, "token");
+    }
+
+    #[test]
+    fn worka_invocation_meta_rejects_missing_ucan() {
+        let mut meta = crate::model::Meta::new();
+        meta.insert(
+            "invocation_id".to_string(),
+            JsonValue::String("inv-1".to_string()),
+        );
+
+        let error = WorkaInvocationMeta::from_meta(&meta).unwrap_err();
+
+        assert!(error.to_string().contains("missing ucan"));
     }
 }
