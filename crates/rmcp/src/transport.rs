@@ -125,7 +125,14 @@ pub use streamable_http_client::StreamableHttpClientTransport;
 /// Common use codes
 pub mod common;
 
+#[cfg(all(feature = "transport-worka", unix))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "transport-worka", unix))))]
 pub mod worka;
+
+#[cfg(all(feature = "transport-worka", not(unix)))]
+compile_error!(
+    "feature `transport-worka` is only supported on Unix targets because Worka transport uses Unix domain sockets"
+);
 
 pub trait Transport<R>: Send
 where
