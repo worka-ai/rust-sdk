@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -26,7 +26,13 @@ pub struct WorkaTransport<R: ServiceRole> {
 
 impl<R: ServiceRole> WorkaTransport<R> {
     pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let mut stream = UnixStream::connect(path).await?;
+        let socket_path = path.as_ref().to_path_buf();
+        let mut stream = UnixStream::connect(&socket_path).await.with_context(|| {
+            format!(
+                "connect Worka transport over unix socket {}",
+                socket_path.display()
+            )
+        })?;
         register_pack_session_if_configured(&mut stream).await?;
         let (read_half, write_half) = stream.into_split();
 
@@ -359,7 +365,11 @@ impl WorkaClient {
             }
         } else {
             // Unix
-            let mut stream = UnixStream::connect(&self.socket_path).await?;
+            let mut stream = UnixStream::connect(&self.socket_path)
+                .await
+                .with_context(|| {
+                    format!("connect Worka client over unix socket {}", self.socket_path)
+                })?;
             stream.write_all(&serde_json::to_vec(&req)?).await?;
             stream.write_all(b"\n").await?;
 
