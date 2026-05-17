@@ -19,7 +19,7 @@ impl RenderedTree {
     }
 }
 
-/// Render a widget tree into A2UI `components` + `root`.
+/// Render a widget tree into surface UI `components` + `root`.
 pub fn render(root: impl Into<Widget>) -> RenderedTree {
     let rendered = render_wire(root.into());
     let components = rendered
@@ -61,24 +61,26 @@ impl Surface {
         serde_json::to_value(wire).unwrap_or(serde_json::Value::Array(vec![]))
     }
 
-    fn to_wire_messages(self) -> Vec<wire::A2uiMessage> {
+    fn to_wire_messages(self) -> Vec<wire::SurfaceMessage> {
         let WireTree { root, components } = render_wire(self.root);
 
         let mut out = Vec::new();
-        out.push(wire::A2uiMessage::SurfaceUpdate(wire::SurfaceUpdate {
+        out.push(wire::SurfaceMessage::SurfaceUpdate(wire::SurfaceUpdate {
             surface_id: self.surface_id.clone(),
             components,
         }));
 
         if let Some(contents) = self.data_model {
-            out.push(wire::A2uiMessage::DataModelUpdate(wire::DataModelUpdate {
-                surface_id: self.surface_id.clone(),
-                path: None,
-                contents,
-            }));
+            out.push(wire::SurfaceMessage::DataModelUpdate(
+                wire::DataModelUpdate {
+                    surface_id: self.surface_id.clone(),
+                    path: None,
+                    contents,
+                },
+            ));
         }
 
-        out.push(wire::A2uiMessage::BeginRendering(wire::BeginRendering {
+        out.push(wire::SurfaceMessage::BeginRendering(wire::BeginRendering {
             surface_id: self.surface_id,
             root,
             catalog_id: None,

@@ -1,12 +1,12 @@
-//! Worka UI (A2UI) builders.
+//! Worka UI (surface UI) builders.
 //!
-//! This module provides a Flutter-like API for producing A2UI JSON payloads
+//! This module provides a Flutter-like API for producing surface UI JSON payloads
 //! (as rendered by Worka's Flutter host via GenUI).
 //!
 //! Key properties:
 //! - Packs build a widget tree using plain Rust structs (no macros).
 //! - The renderer assigns component IDs internally (packs don't manage graphs).
-//! - Output is serialized to the same A2UI message shapes understood by the host.
+//! - Output is serialized to the same surface UI message shapes understood by the host.
 
 mod action;
 mod children;

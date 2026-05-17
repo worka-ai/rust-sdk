@@ -1,4 +1,4 @@
-//! Internal serde shapes for the A2UI wire format.
+//! Internal serde shapes for the surface UI wire format.
 //!
 //! This module is intentionally not exported. Packs should construct UI with
 //! `crate::worka_ui` widget structs and call `Surface::to_value()`.
@@ -543,7 +543,7 @@ pub(crate) struct DeleteSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) enum A2uiMessage {
+pub(crate) enum SurfaceMessage {
     #[serde(rename = "surfaceUpdate")]
     SurfaceUpdate(SurfaceUpdate),
     #[serde(rename = "beginRendering")]
