@@ -1,12 +1,12 @@
-use std::future::Future;
+use std::{future::Future, pin::Pin};
 
 use anyhow::{Context, Result, anyhow};
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::UnixStream,
+    io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    net::{TcpStream, UnixStream},
     sync::mpsc,
 };
 use tokio_util::{
@@ -17,9 +17,11 @@ use tokio_util::{
 use crate::{model::JsonRpcMessage, service::ServiceRole, transport::Transport};
 
 pub struct WorkaTransport<R: ServiceRole> {
-    reader: FramedRead<
-        tokio::net::unix::OwnedReadHalf,
-        WorkaCodec<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>,
+    reader: Pin<
+        Box<
+            dyn Stream<Item = std::io::Result<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>>
+                + Send,
+        >,
     >,
     tx: mpsc::Sender<JsonRpcMessage<R::Req, R::Resp, R::Not>>,
 }
@@ -27,36 +29,65 @@ pub struct WorkaTransport<R: ServiceRole> {
 impl<R: ServiceRole> WorkaTransport<R> {
     pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
         let socket_path = path.as_ref().to_path_buf();
-        let mut stream = UnixStream::connect(&socket_path).await.with_context(|| {
-            format!(
-                "connect Worka transport over unix socket {}",
-                socket_path.display()
-            )
-        })?;
-        register_pack_session_if_configured(&mut stream).await?;
-        let (read_half, write_half) = stream.into_split();
+        let (tx, rx) = mpsc::channel::<JsonRpcMessage<R::Req, R::Resp, R::Not>>(64);
+        let endpoint = socket_path.to_string_lossy().to_string();
+        let reader: Pin<
+            Box<
+                dyn Stream<
+                        Item = std::io::Result<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>,
+                    > + Send,
+            >,
+        > = if is_tcp_endpoint(&endpoint) {
+            let mut stream = TcpStream::connect(&endpoint)
+                .await
+                .with_context(|| format!("connect Worka transport over TCP {endpoint}"))?;
+            register_pack_session_if_configured(&mut stream).await?;
+            let (read_half, write_half) = stream.into_split();
+            spawn_worka_writer(write_half, rx);
+            Box::pin(FramedRead::new(read_half, WorkaCodec::default()))
+        } else {
+            let mut stream = UnixStream::connect(&socket_path).await.with_context(|| {
+                format!(
+                    "connect Worka transport over unix socket {}",
+                    socket_path.display()
+                )
+            })?;
+            register_pack_session_if_configured(&mut stream).await?;
+            let (read_half, write_half) = stream.into_split();
+            spawn_worka_writer(write_half, rx);
+            Box::pin(FramedRead::new(read_half, WorkaCodec::default()))
+        };
 
-        let (tx, mut rx) = mpsc::channel::<JsonRpcMessage<R::Req, R::Resp, R::Not>>(64);
-
-        tokio::spawn(async move {
-            let mut writer = FramedWrite::new(write_half, WorkaCodec::default());
-            while let Some(msg) = rx.recv().await {
-                if let Err(e) = writer.send(msg).await {
-                    tracing::error!("WorkaTransport writer error: {}", e);
-                    break;
-                }
-            }
-            let _ = writer.get_mut().shutdown().await;
-        });
-
-        Ok(Self {
-            reader: FramedRead::new(read_half, WorkaCodec::default()),
-            tx,
-        })
+        Ok(Self { reader, tx })
     }
 }
 
-async fn register_pack_session_if_configured(stream: &mut UnixStream) -> Result<()> {
+fn is_tcp_endpoint(endpoint: &str) -> bool {
+    endpoint.contains(':') && !endpoint.starts_with('/')
+}
+
+fn spawn_worka_writer<W, Req, Resp, Not>(
+    write_half: W,
+    mut rx: mpsc::Receiver<JsonRpcMessage<Req, Resp, Not>>,
+) where
+    W: AsyncWrite + Unpin + Send + 'static,
+    Req: Serialize + Send + 'static,
+    Resp: Serialize + Send + 'static,
+    Not: Serialize + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut writer = FramedWrite::new(write_half, WorkaCodec::default());
+        while let Some(msg) = rx.recv().await {
+            if let Err(e) = writer.send(msg).await {
+                tracing::error!("WorkaTransport writer error: {}", e);
+                break;
+            }
+        }
+        let _ = writer.get_mut().shutdown().await;
+    });
+}
+
+async fn register_pack_session_if_configured(stream: &mut (impl AsyncWrite + Unpin)) -> Result<()> {
     let Ok(session_id) = std::env::var("WORKA_PACK_SESSION_ID") else {
         return Ok(());
     };
