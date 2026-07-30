@@ -312,6 +312,22 @@ impl WorkaClient {
             .await
     }
 
+    pub async fn integration_credentials(
+        &self,
+        invocation_id: &str,
+        ucan: &str,
+    ) -> Result<JsonValue> {
+        self.send_request(WorkaSocketRequest {
+            invocation_id: invocation_id.to_string(),
+            parent_invocation_id: None,
+            ucan: ucan.to_string(),
+            cap: None,
+            op: "integration.credentials".to_string(),
+            args: JsonValue::Null,
+        })
+        .await
+    }
+
     pub async fn http_request_for_invocation(
         &self,
         invocation: &WorkaInvocationMeta,
