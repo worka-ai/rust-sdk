@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
-    net::{TcpStream, UnixStream},
+    net::UnixStream,
     sync::mpsc,
 };
 use tokio_util::{
@@ -30,40 +30,25 @@ impl<R: ServiceRole> WorkaTransport<R> {
     pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
         let socket_path = path.as_ref().to_path_buf();
         let (tx, rx) = mpsc::channel::<JsonRpcMessage<R::Req, R::Resp, R::Not>>(64);
-        let endpoint = socket_path.to_string_lossy().to_string();
+        let mut stream = UnixStream::connect(&socket_path).await.with_context(|| {
+            format!(
+                "connect Worka transport over unix socket {}",
+                socket_path.display()
+            )
+        })?;
+        register_pack_session_if_configured(&mut stream).await?;
+        let (read_half, write_half) = stream.into_split();
+        spawn_worka_writer(write_half, rx);
         let reader: Pin<
             Box<
                 dyn Stream<
                         Item = std::io::Result<JsonRpcMessage<R::PeerReq, R::PeerResp, R::PeerNot>>,
                     > + Send,
             >,
-        > = if is_tcp_endpoint(&endpoint) {
-            let mut stream = TcpStream::connect(&endpoint)
-                .await
-                .with_context(|| format!("connect Worka transport over TCP {endpoint}"))?;
-            register_pack_session_if_configured(&mut stream).await?;
-            let (read_half, write_half) = stream.into_split();
-            spawn_worka_writer(write_half, rx);
-            Box::pin(FramedRead::new(read_half, WorkaCodec::default()))
-        } else {
-            let mut stream = UnixStream::connect(&socket_path).await.with_context(|| {
-                format!(
-                    "connect Worka transport over unix socket {}",
-                    socket_path.display()
-                )
-            })?;
-            register_pack_session_if_configured(&mut stream).await?;
-            let (read_half, write_half) = stream.into_split();
-            spawn_worka_writer(write_half, rx);
-            Box::pin(FramedRead::new(read_half, WorkaCodec::default()))
-        };
+        > = Box::pin(FramedRead::new(read_half, WorkaCodec::default()));
 
         Ok(Self { reader, tx })
     }
-}
-
-fn is_tcp_endpoint(endpoint: &str) -> bool {
-    endpoint.contains(':') && !endpoint.starts_with('/')
 }
 
 fn spawn_worka_writer<W, Req, Resp, Not>(
@@ -292,6 +277,14 @@ pub enum HttpMethod {
     Trace,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkaDatabaseStatement {
+    pub sql: String,
+    #[serde(default)]
+    pub parameters: Vec<JsonValue>,
+}
+
 impl WorkaClient {
     pub fn new() -> Self {
         let path = std::env::var("WORKA_BROKER_SOCKET")
@@ -324,6 +317,80 @@ impl WorkaClient {
             cap: None,
             op: "integration.credentials".to_string(),
             args: JsonValue::Null,
+        })
+        .await
+    }
+
+    pub async fn database_execute_for_invocation(
+        &self,
+        invocation: &WorkaInvocationMeta,
+        child_invocation_id: &str,
+        group: &str,
+        statement: WorkaDatabaseStatement,
+    ) -> Result<JsonValue> {
+        self.database_request_for_invocation(
+            invocation,
+            child_invocation_id,
+            "worka.db.execute",
+            serde_json::json!({
+                "group": group,
+                "sql": statement.sql,
+                "parameters": statement.parameters,
+            }),
+        )
+        .await
+    }
+
+    pub async fn database_query_for_invocation(
+        &self,
+        invocation: &WorkaInvocationMeta,
+        child_invocation_id: &str,
+        group: &str,
+        statement: WorkaDatabaseStatement,
+    ) -> Result<JsonValue> {
+        self.database_request_for_invocation(
+            invocation,
+            child_invocation_id,
+            "worka.db.query",
+            serde_json::json!({
+                "group": group,
+                "sql": statement.sql,
+                "parameters": statement.parameters,
+            }),
+        )
+        .await
+    }
+
+    pub async fn database_batch_for_invocation(
+        &self,
+        invocation: &WorkaInvocationMeta,
+        child_invocation_id: &str,
+        group: &str,
+        statements: Vec<WorkaDatabaseStatement>,
+    ) -> Result<JsonValue> {
+        self.database_request_for_invocation(
+            invocation,
+            child_invocation_id,
+            "worka.db.batch",
+            serde_json::json!({"group": group, "statements": statements}),
+        )
+        .await
+    }
+
+    async fn database_request_for_invocation(
+        &self,
+        invocation: &WorkaInvocationMeta,
+        child_invocation_id: &str,
+        operation: &str,
+        args: JsonValue,
+    ) -> Result<JsonValue> {
+        self.send_request(WorkaSocketRequest {
+            invocation_id: child_invocation_id.to_string(),
+            parent_invocation_id: Some(invocation.invocation_id.clone()),
+            ucan: invocation.ucan.clone(),
+            cap: None,
+            op: operation.to_string(),
+            args,
         })
         .await
     }
@@ -378,68 +445,33 @@ impl WorkaClient {
     }
 
     pub async fn send_request(&self, req: WorkaSocketRequest) -> Result<JsonValue> {
-        if self.socket_path.contains(':') {
-            // TCP
-            let stream = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                tokio::net::TcpStream::connect(&self.socket_path),
-            )
+        let mut stream = UnixStream::connect(&self.socket_path)
             .await
-            .map_err(|_| anyhow!("Worka connect timeout (TCP)"))??;
-            let mut stream = stream;
-            stream.write_all(&serde_json::to_vec(&req)?).await?;
-            stream.write_all(b"\n").await?;
+            .with_context(|| {
+                format!("connect Worka client over unix socket {}", self.socket_path)
+            })?;
+        stream.write_all(&serde_json::to_vec(&req)?).await?;
+        stream.write_all(b"\n").await?;
 
-            let mut reader = BufReader::new(stream);
-            let mut line = String::new();
-            reader.read_line(&mut line).await?;
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).await?;
 
-            let res: WorkaSocketResponse = serde_json::from_str(&line)?;
-            if res.invocation_id.as_deref() != Some(req.invocation_id.as_str()) {
-                return Err(anyhow!(
-                    "Worka response invocation_id mismatch: expected {}, got {:?}",
-                    req.invocation_id,
-                    res.invocation_id
-                ));
-            }
-            if res.ok {
-                Ok(res.value)
-            } else {
-                Err(anyhow!(
-                    res.error
-                        .unwrap_or_else(|| "Unknown worka error".to_string())
-                ))
-            }
+        let res: WorkaSocketResponse = serde_json::from_str(&line)?;
+        if res.invocation_id.as_deref() != Some(req.invocation_id.as_str()) {
+            return Err(anyhow!(
+                "Worka response invocation_id mismatch: expected {}, got {:?}",
+                req.invocation_id,
+                res.invocation_id
+            ));
+        }
+        if res.ok {
+            Ok(res.value)
         } else {
-            // Unix
-            let mut stream = UnixStream::connect(&self.socket_path)
-                .await
-                .with_context(|| {
-                    format!("connect Worka client over unix socket {}", self.socket_path)
-                })?;
-            stream.write_all(&serde_json::to_vec(&req)?).await?;
-            stream.write_all(b"\n").await?;
-
-            let mut reader = BufReader::new(stream);
-            let mut line = String::new();
-            reader.read_line(&mut line).await?;
-
-            let res: WorkaSocketResponse = serde_json::from_str(&line)?;
-            if res.invocation_id.as_deref() != Some(req.invocation_id.as_str()) {
-                return Err(anyhow!(
-                    "Worka response invocation_id mismatch: expected {}, got {:?}",
-                    req.invocation_id,
-                    res.invocation_id
-                ));
-            }
-            if res.ok {
-                Ok(res.value)
-            } else {
-                Err(anyhow!(
-                    res.error
-                        .unwrap_or_else(|| "Unknown worka error".to_string())
-                ))
-            }
+            Err(anyhow!(
+                res.error
+                    .unwrap_or_else(|| "Unknown worka error".to_string())
+            ))
         }
     }
 }
