@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Result;
 use rmcp::{
     RoleClient,
-    model::{CallToolRequestParam, CallToolResult, Tool as McpTool},
+    model::{CallToolRequestParams, CallToolResult, Tool as McpTool},
     service::{RunningService, ServerSink},
 };
 use serde_json::Value;
@@ -54,14 +54,11 @@ impl Tool for McpToolAdapter {
             _ => None,
         };
         println!("arguments: {:?}", arguments);
-        let call_result = self
-            .server
-            .call_tool(CallToolRequestParam {
-                name: self.tool.name.clone(),
-                arguments,
-                task: None,
-            })
-            .await?;
+        let mut params = CallToolRequestParams::new(self.tool.name.clone());
+        if let Some(args) = arguments {
+            params = params.with_arguments(args);
+        }
+        let call_result = self.server.call_tool(params).await?;
 
         Ok(call_result)
     }

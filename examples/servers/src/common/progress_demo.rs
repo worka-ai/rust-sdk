@@ -6,12 +6,12 @@ use std::{
 
 use futures::Stream;
 use rmcp::{
-    ErrorData as McpError, RoleServer, ServerHandler, handler::server::tool::ToolRouter, model::*,
-    service::RequestContext, tool, tool_handler, tool_router,
+    ErrorData as McpError, RoleServer, ServerHandler, model::*, service::RequestContext, tool,
+    tool_handler, tool_router,
 };
 use serde_json::json;
 use tokio_stream::StreamExt;
-use tracing::debug;
+use tracing::{debug, info};
 
 // a Stream data source that generates data in chunks
 #[derive(Clone)]
@@ -30,7 +30,7 @@ impl StreamDataSource {
         }
     }
     pub fn from_text(text: &str) -> Self {
-        Self::new(text.as_bytes().to_vec(), 1)
+        Self::new(text.as_bytes().to_vec(), 5)
     }
 }
 
@@ -54,7 +54,6 @@ impl Stream for StreamDataSource {
 #[derive(Clone)]
 pub struct ProgressDemo {
     data_source: StreamDataSource,
-    tool_router: ToolRouter<Self>,
 }
 
 #[tool_router]
@@ -62,8 +61,7 @@ impl ProgressDemo {
     #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
-            tool_router: Self::tool_router(),
-            data_source: StreamDataSource::from_text("Hello, world!"),
+            data_source: StreamDataSource::from_text("1111122222333334444455555"),
         }
     }
     #[tool(description = "Process data stream with progress updates")]
@@ -72,6 +70,21 @@ impl ProgressDemo {
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let mut counter = 0;
+        info!(
+            "Processing stream with progress token {:?}",
+            ctx.meta.get_key_value("progressToken")
+        );
+        let Some((_, progress_token)) = ctx.meta.get_key_value("progressToken") else {
+            return Err(McpError::internal_error(format!("No progress token"), None));
+        };
+
+        let Ok(progress_token) = serde_json::from_value::<NumberOrString>(progress_token.clone())
+        else {
+            return Err(McpError::internal_error(
+                format!("Invalid format of the progress token"),
+                None,
+            ));
+        };
 
         let mut data_source = self.data_source.clone();
         loop {
@@ -84,12 +97,12 @@ impl ProgressDemo {
             let chunk_str = String::from_utf8_lossy(&chunk);
             counter += 1;
             // create progress notification param
-            let progress_param = ProgressNotificationParam {
-                progress_token: ProgressToken(NumberOrString::Number(counter)),
-                progress: counter as f64,
-                total: None,
-                message: Some(chunk_str.to_string()),
-            };
+            let progress_param = ProgressNotificationParam::new(
+                ProgressToken(progress_token.clone()),
+                counter as f64,
+            )
+            .with_total(5.0)
+            .with_message(chunk_str.to_string());
 
             match ctx.peer.notify_progress(progress_param).await {
                 Ok(_) => {
@@ -106,9 +119,10 @@ impl ProgressDemo {
                     ));
                 }
             }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Processed {} records successfully",
             counter
         ))]))
@@ -118,15 +132,13 @@ impl ProgressDemo {
 #[tool_handler]
 impl ServerHandler for ProgressDemo {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_protocol_version(ProtocolVersion::V_2024_11_05)
+            .with_server_info(Implementation::from_build_env())
+            .with_instructions(
                 "This server demonstrates progress notifications during long-running operations. \
                  Use the tools to see real-time progress updates for batch processing"
                     .to_string(),
-            ),
-        }
+            )
     }
 }

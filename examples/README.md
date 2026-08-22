@@ -3,7 +3,7 @@
 1. **Build the Server (Counter Example)**
 
    ```sh
-   cargo build --release --example servers_counter_stdio
+   cargo build --release -p mcp-server-examples --example servers_counter_stdio
    ```
 
    This builds a standard input/output MCP server binary.
@@ -70,7 +70,7 @@ see [servers/README.md](servers/README.md)
 
 # Integration
 
-- [Rig](rig-integration) A stream chatbot with rig
+- [Rig](https://github.com/0xPlaygrounds/rig/blob/main/rig/rig-core/examples/rmcp.rs) A stream chatbot with rig
 - [Simple Chat Client](simple-chat-client) A simple chat client implementation using the Model Context Protocol (MCP) SDK.
 
 # WASI

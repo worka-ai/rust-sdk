@@ -1,11 +1,6 @@
 use std::{borrow::Cow, fmt::Display};
 
-use crate::ServiceError;
 pub use crate::model::ErrorData;
-#[deprecated(
-    note = "Use `rmcp::ErrorData` instead, `rmcp::ErrorData` could become `RmcpError` in the future."
-)]
-pub type Error = ErrorData;
 impl Display for ErrorData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.code.0, self.message)?;
@@ -18,11 +13,28 @@ impl Display for ErrorData {
 
 impl std::error::Error for ErrorData {}
 
+#[cfg(all(feature = "auth", any(feature = "client", feature = "server")))]
+pub(crate) struct ErrorChain<'a>(pub(crate) &'a (dyn std::error::Error + 'static));
+
+#[cfg(all(feature = "auth", any(feature = "client", feature = "server")))]
+impl Display for ErrorChain<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)?;
+        for source in std::iter::successors(self.0.source(), |source| source.source()) {
+            write!(f, "\n  Caused by: {source}")?;
+        }
+        Ok(())
+    }
+}
+
 /// This is an unified error type for the errors could be returned by the service.
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::large_enum_variant)]
+#[non_exhaustive]
 pub enum RmcpError {
+    #[cfg(any(feature = "client", feature = "server"))]
     #[error("Service error: {0}")]
-    Service(#[from] ServiceError),
+    Service(#[from] crate::ServiceError),
     #[cfg(feature = "client")]
     #[error("Client initialization error: {0}")]
     ClientInitialize(#[from] crate::service::ClientInitializeError),

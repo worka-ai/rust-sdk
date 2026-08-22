@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
         while let Ok((stream, addr)) = unix_listener.accept().await {
             println!("Client connected: {:?}", addr);
             tokio::spawn(async move {
-                match serve_server(Calculator::new(), stream).await {
+                match serve_server(Calculator, stream).await {
                     Ok(server) => {
                         println!("Server initialized successfully");
                         if let Err(e) = server.waiting().await {
@@ -46,14 +46,14 @@ async fn main() -> anyhow::Result<()> {
             println!("Calling sum tool: {}", sum_tool.name);
             let result = client
                 .peer()
-                .call_tool(rmcp::model::CallToolRequestParam {
-                    name: sum_tool.name.clone(),
-                    arguments: Some(rmcp::object!({
-                        "a": 10,
-                        "b": 20
-                    })),
-                    task: None,
-                })
+                .call_tool(
+                    rmcp::model::CallToolRequestParams::new(sum_tool.name.clone()).with_arguments(
+                        rmcp::object!({
+                            "a": 10,
+                            "b": 20
+                        }),
+                    ),
+                )
                 .await?;
 
             println!("Result: {:?}", result);

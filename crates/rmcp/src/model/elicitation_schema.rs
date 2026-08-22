@@ -16,9 +16,10 @@
 //!     .build();
 //! ```
 
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{borrow::Cow, collections::BTreeMap, marker::PhantomData};
 
-use serde::{Deserialize, Serialize};
+use indexmap::IndexMap;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{const_string, model::ConstString};
 
@@ -49,7 +50,8 @@ const_string!(ArrayTypeConst = "array");
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
-pub enum PrimitiveSchema {
+#[non_exhaustive]
+pub enum PrimitiveSchemaDefinition {
     /// Enum property (explicit enum schema)
     Enum(EnumSchema),
     /// String property (with optional enum constraint)
@@ -70,6 +72,7 @@ pub enum PrimitiveSchema {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum StringFormat {
     /// Email address format
     Email,
@@ -89,6 +92,7 @@ pub enum StringFormat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct StringSchema {
     /// Type discriminator
     #[serde(rename = "type")]
@@ -113,6 +117,10 @@ pub struct StringSchema {
     /// String format - limited to: "email", "uri", "date", "date-time"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<StringFormat>,
+
+    /// Default value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
 }
 
 impl Default for StringSchema {
@@ -124,6 +132,7 @@ impl Default for StringSchema {
             min_length: None,
             max_length: None,
             format: None,
+            default: None,
         }
     }
 }
@@ -213,6 +222,12 @@ impl StringSchema {
         self.format = Some(format);
         self
     }
+
+    /// Set default value
+    pub fn with_default(mut self, default: impl Into<String>) -> Self {
+        self.default = Some(default.into());
+        self
+    }
 }
 
 // =============================================================================
@@ -226,6 +241,7 @@ impl StringSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct NumberSchema {
     /// Type discriminator
     #[serde(rename = "type")]
@@ -246,6 +262,10 @@ pub struct NumberSchema {
     /// Maximum value (inclusive)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum: Option<f64>,
+
+    /// Default value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<f64>,
 }
 
 impl Default for NumberSchema {
@@ -256,6 +276,7 @@ impl Default for NumberSchema {
             description: None,
             minimum: None,
             maximum: None,
+            default: None,
         }
     }
 }
@@ -307,6 +328,12 @@ impl NumberSchema {
         self.description = Some(description.into());
         self
     }
+
+    /// Set default value
+    pub fn with_default(mut self, default: f64) -> Self {
+        self.default = Some(default);
+        self
+    }
 }
 
 // =============================================================================
@@ -320,6 +347,7 @@ impl NumberSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct IntegerSchema {
     /// Type discriminator
     #[serde(rename = "type")]
@@ -340,6 +368,10 @@ pub struct IntegerSchema {
     /// Maximum value (inclusive)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum: Option<i64>,
+
+    /// Default value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<i64>,
 }
 
 impl Default for IntegerSchema {
@@ -350,6 +382,7 @@ impl Default for IntegerSchema {
             description: None,
             minimum: None,
             maximum: None,
+            default: None,
         }
     }
 }
@@ -401,6 +434,12 @@ impl IntegerSchema {
         self.description = Some(description.into());
         self
     }
+
+    /// Set default value
+    pub fn with_default(mut self, default: i64) -> Self {
+        self.default = Some(default);
+        self
+    }
 }
 
 // =============================================================================
@@ -411,6 +450,7 @@ impl IntegerSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct BooleanSchema {
     /// Type discriminator
     #[serde(rename = "type")]
@@ -474,16 +514,28 @@ impl BooleanSchema {
 /// Represent single entry for titled item
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ConstTitle {
     #[serde(rename = "const")]
     pub const_: String,
     pub title: String,
 }
 
+impl ConstTitle {
+    /// Create a new ConstTitle.
+    pub fn new(const_: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            const_: const_.into(),
+            title: title.into(),
+        }
+    }
+}
+
 /// Legacy enum schema, keep for backward compatibility
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct LegacyEnumSchema {
     #[serde(rename = "type")]
     pub type_: StringTypeConst,
@@ -493,13 +545,30 @@ pub struct LegacyEnumSchema {
     pub description: Option<Cow<'static, str>>,
     #[serde(rename = "enum")]
     pub enum_: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enum_names: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+}
+
+impl LegacyEnumSchema {
+    pub fn new(enum_values: Vec<String>) -> Self {
+        Self {
+            type_: StringTypeConst,
+            title: None,
+            description: None,
+            enum_: enum_values,
+            enum_names: None,
+            default: None,
+        }
+    }
 }
 
 /// Untitled single-select
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct UntitledSingleSelectEnumSchema {
     #[serde(rename = "type")]
     pub type_: StringTypeConst,
@@ -517,6 +586,7 @@ pub struct UntitledSingleSelectEnumSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct TitledSingleSelectEnumSchema {
     #[serde(rename = "type")]
     pub type_: StringTypeConst,
@@ -530,10 +600,24 @@ pub struct TitledSingleSelectEnumSchema {
     pub default: Option<String>,
 }
 
+impl TitledSingleSelectEnumSchema {
+    /// Create a new TitledSingleSelectEnumSchema.
+    pub fn new(one_of: Vec<ConstTitle>) -> Self {
+        Self {
+            type_: StringTypeConst,
+            title: None,
+            description: None,
+            one_of,
+            default: None,
+        }
+    }
+}
+
 /// Combined single-select
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum SingleSelectEnumSchema {
     Untitled(UntitledSingleSelectEnumSchema),
     Titled(TitledSingleSelectEnumSchema),
@@ -542,6 +626,7 @@ pub enum SingleSelectEnumSchema {
 /// Items for untitled multi-select options
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct UntitledItems {
     #[serde(rename = "type")]
     pub type_: StringTypeConst,
@@ -549,9 +634,19 @@ pub struct UntitledItems {
     pub enum_: Vec<String>,
 }
 
+impl UntitledItems {
+    pub fn new(enum_values: Vec<String>) -> Self {
+        Self {
+            type_: StringTypeConst,
+            enum_: enum_values,
+        }
+    }
+}
+
 /// Items for titled multi-select options
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct TitledItems {
     // MCP spec requires "anyOf" for multi-select enums (allows any combination)
     // Alias "oneOf" for compatibility with schemars
@@ -559,10 +654,18 @@ pub struct TitledItems {
     pub any_of: Vec<ConstTitle>,
 }
 
+impl TitledItems {
+    /// Create a new TitledItems.
+    pub fn new(any_of: Vec<ConstTitle>) -> Self {
+        Self { any_of }
+    }
+}
+
 /// Multi-select untitled options
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct UntitledMultiSelectEnumSchema {
     #[serde(rename = "type")]
     pub type_: ArrayTypeConst,
@@ -583,6 +686,7 @@ pub struct UntitledMultiSelectEnumSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct TitledMultiSelectEnumSchema {
     #[serde(rename = "type")]
     pub type_: ArrayTypeConst,
@@ -599,10 +703,56 @@ pub struct TitledMultiSelectEnumSchema {
     pub default: Option<Vec<String>>,
 }
 
+impl TitledMultiSelectEnumSchema {
+    /// Create a new TitledMultiSelectEnumSchema.
+    pub fn new(items: TitledItems) -> Self {
+        Self {
+            type_: ArrayTypeConst,
+            title: None,
+            description: None,
+            min_items: None,
+            max_items: None,
+            items,
+            default: None,
+        }
+    }
+
+    /// Set the title.
+    pub fn with_title(mut self, title: impl Into<Cow<'static, str>>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Set the description.
+    pub fn with_description(mut self, description: impl Into<Cow<'static, str>>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Set the minimum number of items.
+    pub fn with_min_items(mut self, min_items: u64) -> Self {
+        self.min_items = Some(min_items);
+        self
+    }
+
+    /// Set the maximum number of items.
+    pub fn with_max_items(mut self, max_items: u64) -> Self {
+        self.max_items = Some(max_items);
+        self
+    }
+
+    /// Set the default values.
+    pub fn with_default(mut self, default: Vec<String>) -> Self {
+        self.default = Some(default);
+        self
+    }
+}
+
 /// Multi-select enum options
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum MultiSelectEnumSchema {
     Untitled(UntitledMultiSelectEnumSchema),
     Titled(TitledMultiSelectEnumSchema),
@@ -626,12 +776,21 @@ pub enum MultiSelectEnumSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum EnumSchema {
     Single(SingleSelectEnumSchema),
     Multi(MultiSelectEnumSchema),
     Legacy(LegacyEnumSchema),
 }
 
+/// Marker type for single-select enum builder
+#[derive(Debug)]
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
+pub struct SingleSelect;
+/// Marker type for multi-select enum builder
+#[derive(Debug)]
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
+pub struct MultiSelect;
 /// Builder for EnumSchema
 /// Allows to create various enum schema types (single/multi select, titled/untitled)
 /// with validation of provided parameters
@@ -649,11 +808,9 @@ pub enum EnumSchema {
 ///  .build();
 /// ```
 #[derive(Debug)]
-pub struct EnumSchemaBuilder {
+pub struct EnumSchemaBuilder<T> {
     /// Enum values
     enum_values: Vec<String>,
-    /// If true generate SingleSelect EnumSchema, MultiSelect otherwise
-    single_select: bool,
     /// If true generate Titled EnumSchema, UnTitled otherwise
     titled: bool,
     /// Title of EnumSchema
@@ -668,149 +825,28 @@ pub struct EnumSchemaBuilder {
     max_items: Option<u64>,
     /// Default values for enum
     default: Vec<String>,
+    select_type: PhantomData<T>,
 }
 
-impl Default for EnumSchemaBuilder {
+/// Default implementation for single-select enum builder
+impl Default for EnumSchemaBuilder<SingleSelect> {
     fn default() -> Self {
         Self {
             title: None,
             description: None,
-            single_select: true,
             titled: false,
             enum_titles: Vec::new(),
             enum_values: Vec::new(),
             min_items: None,
             max_items: None,
             default: Vec::new(),
+            select_type: PhantomData,
         }
     }
 }
 
-/// Enum selection builder
-impl EnumSchemaBuilder {
-    pub fn new(values: Vec<String>) -> EnumSchemaBuilder {
-        EnumSchemaBuilder {
-            enum_values: values,
-            single_select: true,
-            titled: false,
-            ..Default::default()
-        }
-    }
-
-    /// Set titles to enum values. Also, implicitly set this enum schema as titled
-    pub fn enum_titles(mut self, titles: Vec<String>) -> Result<EnumSchemaBuilder, String> {
-        if titles.len() != self.enum_values.len() {
-            return Err(format!(
-                "Provided number of titles do not match number of values: expected {}, but got {}",
-                self.enum_values.len(),
-                titles.len()
-            ));
-        }
-        self.titled = true;
-        self.enum_titles = titles;
-        Ok(self)
-    }
-
-    /// Set enum as single-select
-    /// If it was multi-select, clear default values
-    pub fn single_select(mut self) -> EnumSchemaBuilder {
-        if !self.single_select {
-            self.default = Vec::new();
-        }
-        self.single_select = true;
-        self
-    }
-
-    /// Set enum as multi-select
-    /// If it was single-select, clear default value
-    pub fn multiselect(mut self) -> EnumSchemaBuilder {
-        if self.single_select {
-            self.default = Vec::new();
-        }
-        self.single_select = false;
-        self
-    }
-
-    /// Set enum as untitled
-    /// Clears any previously set titles
-    pub fn untitled(mut self) -> EnumSchemaBuilder {
-        self.enum_titles = Vec::new();
-        self.titled = false;
-        self
-    }
-
-    /// Set default value for single-select enum
-    pub fn single_select_default(
-        mut self,
-        default_value: String,
-    ) -> Result<EnumSchemaBuilder, String> {
-        if !self.enum_values.contains(&default_value) {
-            return Err("Provided default value is not in enum values".to_string());
-        }
-        if !self.single_select {
-            return Err(
-                "Set single default value available only when the builder is set to single-select. \
-            Use multi_select_default method for multi-select options".to_string(),
-            );
-        }
-        self.default = vec![default_value];
-        Ok(self)
-    }
-
-    /// Set default value for multi-select enum
-    pub fn multi_select_default(
-        mut self,
-        default_values: Vec<String>,
-    ) -> Result<EnumSchemaBuilder, String> {
-        if self.single_select {
-            return Err(
-                "Set multiple default values available only when the builder is set to multi-select. \
-            Use single_select_default method for single-select options".to_string(),
-            );
-        }
-        for value in &default_values {
-            if !self.enum_values.contains(value) {
-                return Err("One of the provided default values is not in enum values".to_string());
-            }
-        }
-        if let Some(min) = self.min_items {
-            if (default_values.len() as u64) < min {
-                return Err("Number of provided default values is less than min_items".to_string());
-            }
-        }
-        if let Some(max) = self.max_items {
-            if (default_values.len() as u64) > max {
-                return Err(
-                    "Number of provided default values is greater than max_items".to_string(),
-                );
-            }
-        }
-        self.default = default_values;
-        Ok(self)
-    }
-
-    /// Set minimal number of items for multi-select enum options
-    pub fn min_items(mut self, value: u64) -> Result<EnumSchemaBuilder, String> {
-        if let Some(max) = self.max_items
-            && value > max
-        {
-            return Err("Provided value is greater than max_items".to_string());
-        }
-        self.min_items = Some(value);
-        Ok(self)
-    }
-
-    /// Set maximal number of items for multi-select enum options
-    pub fn max_items(mut self, value: u64) -> Result<EnumSchemaBuilder, String> {
-        if let Some(min) = self.min_items
-            && value < min
-        {
-            return Err("Provided value is less than min_items".to_string());
-        }
-        self.max_items = Some(value);
-        Ok(self)
-    }
-
+/// Common enum schema builder methods
+impl<T> EnumSchemaBuilder<T> {
     /// Set title of enum schema
     pub fn title(mut self, value: impl Into<Cow<'static, str>>) -> Self {
         self.title = Some(value.into());
@@ -823,10 +859,74 @@ impl EnumSchemaBuilder {
         self
     }
 
+    /// Set enum as untitled
+    /// Clears any previously set titles
+    pub fn untitled(mut self) -> Self {
+        self.enum_titles = Vec::new();
+        self.titled = false;
+        self
+    }
+
+    /// Set titles to enum values. Also, implicitly set this enum schema as titled
+    pub fn enum_titles(mut self, titles: Vec<String>) -> Result<EnumSchemaBuilder<T>, String> {
+        if titles.len() != self.enum_values.len() {
+            return Err(format!(
+                "Provided number of titles do not match number of values: expected {}, but got {}",
+                self.enum_values.len(),
+                titles.len()
+            ));
+        }
+        self.titled = true;
+        self.enum_titles = titles;
+        Ok(self)
+    }
+}
+
+/// Enum selection builder for single-select enums
+impl EnumSchemaBuilder<SingleSelect> {
+    pub fn new(values: Vec<String>) -> EnumSchemaBuilder<SingleSelect> {
+        EnumSchemaBuilder {
+            enum_values: values,
+            ..Default::default()
+        }
+    }
+
+    /// Transition to multi-select enum builder.
+    ///
+    /// Clears any previously set default values and resets min/max items.
+    /// After this transition, you can use `min_items()`, `max_items()`, and
+    /// `with_default()` for multi-select semantics.
+    pub fn multiselect(self) -> EnumSchemaBuilder<MultiSelect> {
+        EnumSchemaBuilder {
+            enum_values: self.enum_values,
+            titled: self.titled,
+            title: self.title,
+            description: self.description,
+            enum_titles: self.enum_titles,
+            min_items: None,
+            max_items: None,
+            default: Vec::new(), // Clear default for multi-select
+            select_type: PhantomData,
+        }
+    }
+
+    /// Set default value
+    pub fn with_default(
+        mut self,
+        default_value: impl Into<String>,
+    ) -> Result<EnumSchemaBuilder<SingleSelect>, String> {
+        let value: String = default_value.into();
+        if !self.enum_values.contains(&value) {
+            return Err("Provided default value is not in enum values".to_string());
+        }
+        self.default = vec![value];
+        Ok(self)
+    }
+
     /// Build enum schema
     pub fn build(mut self) -> EnumSchema {
-        match (self.single_select, self.titled) {
-            (true, false) => EnumSchema::Single(SingleSelectEnumSchema::Untitled(
+        match self.titled {
+            false => EnumSchema::Single(SingleSelectEnumSchema::Untitled(
                 UntitledSingleSelectEnumSchema {
                     type_: StringTypeConst,
                     title: self.title,
@@ -835,7 +935,7 @@ impl EnumSchemaBuilder {
                     default: self.default.pop(),
                 },
             )),
-            (true, true) => EnumSchema::Single(SingleSelectEnumSchema::Titled(
+            true => EnumSchema::Single(SingleSelectEnumSchema::Titled(
                 TitledSingleSelectEnumSchema {
                     type_: StringTypeConst,
                     title: self.title,
@@ -849,7 +949,78 @@ impl EnumSchemaBuilder {
                     default: self.default.pop(),
                 },
             )),
-            (false, false) => EnumSchema::Multi(MultiSelectEnumSchema::Untitled(
+        }
+    }
+}
+
+/// Enum selection builder for multi-select enums
+impl EnumSchemaBuilder<MultiSelect> {
+    /// Set enum as single-select
+    /// If it was multi-select, clear default values
+    pub fn single_select(self) -> EnumSchemaBuilder<SingleSelect> {
+        EnumSchemaBuilder {
+            enum_values: self.enum_values,
+            titled: self.titled,
+            title: self.title,
+            description: self.description,
+            enum_titles: self.enum_titles,
+            min_items: None,
+            max_items: None,
+            default: Vec::new(), // Clear default for single-select
+            select_type: PhantomData,
+        }
+    }
+
+    /// Set default values
+    pub fn with_default(
+        mut self,
+        default_values: Vec<String>,
+    ) -> Result<EnumSchemaBuilder<MultiSelect>, String> {
+        for value in &default_values {
+            if !self.enum_values.contains(value) {
+                return Err("One of the provided default values is not in enum values".to_string());
+            }
+        }
+        if let Some(min) = self.min_items
+            && (default_values.len() as u64) < min
+        {
+            return Err("Number of provided default values is less than min_items".to_string());
+        }
+        if let Some(max) = self.max_items
+            && (default_values.len() as u64) > max
+        {
+            return Err("Number of provided default values is greater than max_items".to_string());
+        }
+        self.default = default_values;
+        Ok(self)
+    }
+
+    /// Set minimal number of items for multi-select enum options
+    pub fn min_items(mut self, value: u64) -> Result<EnumSchemaBuilder<MultiSelect>, String> {
+        if let Some(max) = self.max_items
+            && value > max
+        {
+            return Err("Provided value is greater than max_items".to_string());
+        }
+        self.min_items = Some(value);
+        Ok(self)
+    }
+
+    /// Set maximal number of items for multi-select enum options
+    pub fn max_items(mut self, value: u64) -> Result<EnumSchemaBuilder<MultiSelect>, String> {
+        if let Some(min) = self.min_items
+            && value < min
+        {
+            return Err("Provided value is less than min_items".to_string());
+        }
+        self.max_items = Some(value);
+        Ok(self)
+    }
+
+    /// Build enum schema
+    pub fn build(self) -> EnumSchema {
+        match self.titled {
+            false => EnumSchema::Multi(MultiSelectEnumSchema::Untitled(
                 UntitledMultiSelectEnumSchema {
                     type_: ArrayTypeConst,
                     title: self.title,
@@ -867,28 +1038,26 @@ impl EnumSchemaBuilder {
                     },
                 },
             )),
-            (false, true) => {
-                EnumSchema::Multi(MultiSelectEnumSchema::Titled(TitledMultiSelectEnumSchema {
-                    type_: ArrayTypeConst,
-                    title: self.title,
-                    description: self.description,
-                    min_items: self.min_items,
-                    max_items: self.max_items,
-                    items: TitledItems {
-                        any_of: self
-                            .enum_titles
-                            .into_iter()
-                            .zip(self.enum_values)
-                            .map(|(title, const_)| ConstTitle { const_, title })
-                            .collect(),
-                    },
-                    default: if self.default.is_empty() {
-                        None
-                    } else {
-                        Some(self.default)
-                    },
-                }))
-            }
+            true => EnumSchema::Multi(MultiSelectEnumSchema::Titled(TitledMultiSelectEnumSchema {
+                type_: ArrayTypeConst,
+                title: self.title,
+                description: self.description,
+                min_items: self.min_items,
+                max_items: self.max_items,
+                items: TitledItems {
+                    any_of: self
+                        .enum_titles
+                        .into_iter()
+                        .zip(self.enum_values)
+                        .map(|(title, const_)| ConstTitle { const_, title })
+                        .collect(),
+                },
+                default: if self.default.is_empty() {
+                    None
+                } else {
+                    Some(self.default)
+                },
+            })),
         }
     }
 }
@@ -909,9 +1078,14 @@ impl EnumSchema {
     /// ```
     /// use rmcp::model::*;
     ///
-    /// let builder = EnumSchema::builder(vec!["A".to_string(), "B".to_string()]);
+    /// let enum_schema = EnumSchema::builder(vec!["A".to_string(), "B".to_string()]).
+    ///     with_default("A").
+    ///     expect("Default value should be valid").
+    ///     enum_titles(vec!["Option A".to_string(), "Option B".to_string()]).
+    ///     expect("Number of titles should match number of values").
+    ///     build();
     /// ```
-    pub fn builder(values: Vec<String>) -> EnumSchemaBuilder {
+    pub fn builder(values: Vec<String>) -> EnumSchemaBuilder<SingleSelect> {
         EnumSchemaBuilder::new(values)
     }
 }
@@ -936,10 +1110,21 @@ impl EnumSchema {
 ///     .optional_bool("newsletter", false)
 ///     .build();
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "schemars", schemars(!into))]
+#[serde(rename_all = "camelCase", into = "ElicitationSchemaWire")]
+#[non_exhaustive]
 pub struct ElicitationSchema {
+    /// Optional JSON Schema dialect identifier (the `$schema` keyword).
+    ///
+    /// The 2025-11-25 protocol revision allows a `requestedSchema` to declare its
+    /// dialect. It is preserved verbatim so a declared dialect survives a
+    /// decode/re-encode round-trip instead of being silently dropped.
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
+    pub schema: Option<Cow<'static, str>>,
+
     /// Always "object" for elicitation schemas
     #[serde(rename = "type")]
     pub type_: ObjectTypeConst,
@@ -949,7 +1134,12 @@ pub struct ElicitationSchema {
     pub title: Option<Cow<'static, str>>,
 
     /// Property definitions (must be primitive types)
-    pub properties: BTreeMap<String, PrimitiveSchema>,
+    pub properties: BTreeMap<String, PrimitiveSchemaDefinition>,
+
+    /// Property names in wire order. Schemas constructed from a `BTreeMap`
+    /// use the map's sorted key order.
+    #[serde(skip)]
+    pub property_order: Option<Vec<String>>,
 
     /// List of required property names
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -960,13 +1150,80 @@ pub struct ElicitationSchema {
     pub description: Option<Cow<'static, str>>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ElicitationSchemaWire {
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    schema: Option<Cow<'static, str>>,
+    #[serde(rename = "type")]
+    type_: ObjectTypeConst,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<Cow<'static, str>>,
+    properties: IndexMap<String, PrimitiveSchemaDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    required: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<Cow<'static, str>>,
+}
+
+impl From<ElicitationSchemaWire> for ElicitationSchema {
+    fn from(schema: ElicitationSchemaWire) -> Self {
+        Self {
+            schema: schema.schema,
+            type_: schema.type_,
+            title: schema.title,
+            property_order: Some(schema.properties.keys().cloned().collect()),
+            properties: schema.properties.into_iter().collect(),
+            required: schema.required,
+            description: schema.description,
+        }
+    }
+}
+
+impl From<ElicitationSchema> for ElicitationSchemaWire {
+    fn from(schema: ElicitationSchema) -> Self {
+        let mut remaining = schema.properties;
+        let mut properties = IndexMap::with_capacity(remaining.len());
+
+        if let Some(property_order) = schema.property_order {
+            for name in property_order {
+                if let Some(definition) = remaining.remove(&name) {
+                    properties.insert(name, definition);
+                }
+            }
+        }
+        properties.extend(remaining);
+
+        Self {
+            schema: schema.schema,
+            type_: schema.type_,
+            title: schema.title,
+            properties,
+            required: schema.required,
+            description: schema.description,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ElicitationSchema {
+    fn deserialize<__D>(__deserializer: __D) -> Result<Self, __D::Error>
+    where
+        __D: Deserializer<'de>,
+    {
+        ElicitationSchemaWire::deserialize(__deserializer).map(Into::into)
+    }
+}
+
 impl ElicitationSchema {
     /// Create a new elicitation schema with the given properties
-    pub fn new(properties: BTreeMap<String, PrimitiveSchema>) -> Self {
+    pub fn new(properties: BTreeMap<String, PrimitiveSchemaDefinition>) -> Self {
+        let property_order = Some(properties.keys().cloned().collect());
         Self {
+            schema: None,
             type_: ObjectTypeConst,
             title: None,
             properties,
+            property_order,
             required: None,
             description: None,
         }
@@ -1058,6 +1315,12 @@ impl ElicitationSchema {
         self
     }
 
+    /// Set the JSON Schema dialect identifier (the `$schema` keyword).
+    pub fn with_schema(mut self, schema: impl Into<Cow<'static, str>>) -> Self {
+        self.schema = Some(schema.into());
+        self
+    }
+
     /// Create a builder for constructing elicitation schemas fluently
     pub fn builder() -> ElicitationSchemaBuilder {
         ElicitationSchemaBuilder::new()
@@ -1083,8 +1346,9 @@ impl ElicitationSchema {
 ///     .build();
 /// ```
 #[derive(Debug, Default)]
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
 pub struct ElicitationSchemaBuilder {
-    pub properties: BTreeMap<String, PrimitiveSchema>,
+    pub properties: BTreeMap<String, PrimitiveSchemaDefinition>,
     pub required: Vec<String>,
     pub title: Option<Cow<'static, str>>,
     pub description: Option<Cow<'static, str>>,
@@ -1097,13 +1361,17 @@ impl ElicitationSchemaBuilder {
     }
 
     /// Add a property to the schema
-    pub fn property(mut self, name: impl Into<String>, schema: PrimitiveSchema) -> Self {
+    pub fn property(mut self, name: impl Into<String>, schema: PrimitiveSchemaDefinition) -> Self {
         self.properties.insert(name.into(), schema);
         self
     }
 
     /// Add a required property to the schema
-    pub fn required_property(mut self, name: impl Into<String>, schema: PrimitiveSchema) -> Self {
+    pub fn required_property(
+        mut self,
+        name: impl Into<String>,
+        schema: PrimitiveSchemaDefinition,
+    ) -> Self {
         let name_str = name.into();
         self.required.push(name_str.clone());
         self.properties.insert(name_str, schema);
@@ -1111,7 +1379,7 @@ impl ElicitationSchemaBuilder {
     }
 
     // ===========================================================================
-    // TYPED PROPERTY METHODS - Cleaner API without PrimitiveSchema wrapper
+    // TYPED PROPERTY METHODS - Cleaner API without PrimitiveSchemaDefinition wrapper
     // ===========================================================================
 
     /// Add a string property with custom builder (required)
@@ -1120,8 +1388,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(StringSchema) -> StringSchema,
     ) -> Self {
-        self.properties
-            .insert(name.into(), PrimitiveSchema::String(f(StringSchema::new())));
+        self.properties.insert(
+            name.into(),
+            PrimitiveSchemaDefinition::String(f(StringSchema::new())),
+        );
         self
     }
 
@@ -1133,8 +1403,10 @@ impl ElicitationSchemaBuilder {
     ) -> Self {
         let name_str = name.into();
         self.required.push(name_str.clone());
-        self.properties
-            .insert(name_str, PrimitiveSchema::String(f(StringSchema::new())));
+        self.properties.insert(
+            name_str,
+            PrimitiveSchemaDefinition::String(f(StringSchema::new())),
+        );
         self
     }
 
@@ -1144,8 +1416,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(NumberSchema) -> NumberSchema,
     ) -> Self {
-        self.properties
-            .insert(name.into(), PrimitiveSchema::Number(f(NumberSchema::new())));
+        self.properties.insert(
+            name.into(),
+            PrimitiveSchemaDefinition::Number(f(NumberSchema::new())),
+        );
         self
     }
 
@@ -1157,8 +1431,10 @@ impl ElicitationSchemaBuilder {
     ) -> Self {
         let name_str = name.into();
         self.required.push(name_str.clone());
-        self.properties
-            .insert(name_str, PrimitiveSchema::Number(f(NumberSchema::new())));
+        self.properties.insert(
+            name_str,
+            PrimitiveSchemaDefinition::Number(f(NumberSchema::new())),
+        );
         self
     }
 
@@ -1170,7 +1446,7 @@ impl ElicitationSchemaBuilder {
     ) -> Self {
         self.properties.insert(
             name.into(),
-            PrimitiveSchema::Integer(f(IntegerSchema::new())),
+            PrimitiveSchemaDefinition::Integer(f(IntegerSchema::new())),
         );
         self
     }
@@ -1183,8 +1459,10 @@ impl ElicitationSchemaBuilder {
     ) -> Self {
         let name_str = name.into();
         self.required.push(name_str.clone());
-        self.properties
-            .insert(name_str, PrimitiveSchema::Integer(f(IntegerSchema::new())));
+        self.properties.insert(
+            name_str,
+            PrimitiveSchemaDefinition::Integer(f(IntegerSchema::new())),
+        );
         self
     }
 
@@ -1196,7 +1474,7 @@ impl ElicitationSchemaBuilder {
     ) -> Self {
         self.properties.insert(
             name.into(),
-            PrimitiveSchema::Boolean(f(BooleanSchema::new())),
+            PrimitiveSchemaDefinition::Boolean(f(BooleanSchema::new())),
         );
         self
     }
@@ -1209,8 +1487,10 @@ impl ElicitationSchemaBuilder {
     ) -> Self {
         let name_str = name.into();
         self.required.push(name_str.clone());
-        self.properties
-            .insert(name_str, PrimitiveSchema::Boolean(f(BooleanSchema::new())));
+        self.properties.insert(
+            name_str,
+            PrimitiveSchemaDefinition::Boolean(f(BooleanSchema::new())),
+        );
         self
     }
 
@@ -1220,22 +1500,28 @@ impl ElicitationSchemaBuilder {
 
     /// Add a required string property
     pub fn required_string(self, name: impl Into<String>) -> Self {
-        self.required_property(name, PrimitiveSchema::String(StringSchema::new()))
+        self.required_property(name, PrimitiveSchemaDefinition::String(StringSchema::new()))
     }
 
     /// Add an optional string property
     pub fn optional_string(self, name: impl Into<String>) -> Self {
-        self.property(name, PrimitiveSchema::String(StringSchema::new()))
+        self.property(name, PrimitiveSchemaDefinition::String(StringSchema::new()))
     }
 
     /// Add a required email property
     pub fn required_email(self, name: impl Into<String>) -> Self {
-        self.required_property(name, PrimitiveSchema::String(StringSchema::email()))
+        self.required_property(
+            name,
+            PrimitiveSchemaDefinition::String(StringSchema::email()),
+        )
     }
 
     /// Add an optional email property
     pub fn optional_email(self, name: impl Into<String>) -> Self {
-        self.property(name, PrimitiveSchema::String(StringSchema::email()))
+        self.property(
+            name,
+            PrimitiveSchemaDefinition::String(StringSchema::email()),
+        )
     }
 
     /// Add a required string property with custom builder
@@ -1244,7 +1530,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(StringSchema) -> StringSchema,
     ) -> Self {
-        self.required_property(name, PrimitiveSchema::String(f(StringSchema::new())))
+        self.required_property(
+            name,
+            PrimitiveSchemaDefinition::String(f(StringSchema::new())),
+        )
     }
 
     /// Add an optional string property with custom builder
@@ -1253,7 +1542,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(StringSchema) -> StringSchema,
     ) -> Self {
-        self.property(name, PrimitiveSchema::String(f(StringSchema::new())))
+        self.property(
+            name,
+            PrimitiveSchemaDefinition::String(f(StringSchema::new())),
+        )
     }
 
     // Convenience methods for numbers
@@ -1262,7 +1554,7 @@ impl ElicitationSchemaBuilder {
     pub fn required_number(self, name: impl Into<String>, min: f64, max: f64) -> Self {
         self.required_property(
             name,
-            PrimitiveSchema::Number(NumberSchema::new().range(min, max)),
+            PrimitiveSchemaDefinition::Number(NumberSchema::new().range(min, max)),
         )
     }
 
@@ -1270,7 +1562,7 @@ impl ElicitationSchemaBuilder {
     pub fn optional_number(self, name: impl Into<String>, min: f64, max: f64) -> Self {
         self.property(
             name,
-            PrimitiveSchema::Number(NumberSchema::new().range(min, max)),
+            PrimitiveSchemaDefinition::Number(NumberSchema::new().range(min, max)),
         )
     }
 
@@ -1280,7 +1572,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(NumberSchema) -> NumberSchema,
     ) -> Self {
-        self.required_property(name, PrimitiveSchema::Number(f(NumberSchema::new())))
+        self.required_property(
+            name,
+            PrimitiveSchemaDefinition::Number(f(NumberSchema::new())),
+        )
     }
 
     /// Add an optional number property with custom builder
@@ -1289,7 +1584,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(NumberSchema) -> NumberSchema,
     ) -> Self {
-        self.property(name, PrimitiveSchema::Number(f(NumberSchema::new())))
+        self.property(
+            name,
+            PrimitiveSchemaDefinition::Number(f(NumberSchema::new())),
+        )
     }
 
     // Convenience methods for integers
@@ -1298,7 +1596,7 @@ impl ElicitationSchemaBuilder {
     pub fn required_integer(self, name: impl Into<String>, min: i64, max: i64) -> Self {
         self.required_property(
             name,
-            PrimitiveSchema::Integer(IntegerSchema::new().range(min, max)),
+            PrimitiveSchemaDefinition::Integer(IntegerSchema::new().range(min, max)),
         )
     }
 
@@ -1306,7 +1604,7 @@ impl ElicitationSchemaBuilder {
     pub fn optional_integer(self, name: impl Into<String>, min: i64, max: i64) -> Self {
         self.property(
             name,
-            PrimitiveSchema::Integer(IntegerSchema::new().range(min, max)),
+            PrimitiveSchemaDefinition::Integer(IntegerSchema::new().range(min, max)),
         )
     }
 
@@ -1316,7 +1614,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(IntegerSchema) -> IntegerSchema,
     ) -> Self {
-        self.required_property(name, PrimitiveSchema::Integer(f(IntegerSchema::new())))
+        self.required_property(
+            name,
+            PrimitiveSchemaDefinition::Integer(f(IntegerSchema::new())),
+        )
     }
 
     /// Add an optional integer property with custom builder
@@ -1325,21 +1626,27 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(IntegerSchema) -> IntegerSchema,
     ) -> Self {
-        self.property(name, PrimitiveSchema::Integer(f(IntegerSchema::new())))
+        self.property(
+            name,
+            PrimitiveSchemaDefinition::Integer(f(IntegerSchema::new())),
+        )
     }
 
     // Convenience methods for booleans
 
     /// Add a required boolean property
     pub fn required_bool(self, name: impl Into<String>) -> Self {
-        self.required_property(name, PrimitiveSchema::Boolean(BooleanSchema::new()))
+        self.required_property(
+            name,
+            PrimitiveSchemaDefinition::Boolean(BooleanSchema::new()),
+        )
     }
 
     /// Add an optional boolean property with default value
     pub fn optional_bool(self, name: impl Into<String>, default: bool) -> Self {
         self.property(
             name,
-            PrimitiveSchema::Boolean(BooleanSchema::new().with_default(default)),
+            PrimitiveSchemaDefinition::Boolean(BooleanSchema::new().with_default(default)),
         )
     }
 
@@ -1349,7 +1656,10 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(BooleanSchema) -> BooleanSchema,
     ) -> Self {
-        self.required_property(name, PrimitiveSchema::Boolean(f(BooleanSchema::new())))
+        self.required_property(
+            name,
+            PrimitiveSchemaDefinition::Boolean(f(BooleanSchema::new())),
+        )
     }
 
     /// Add an optional boolean property with custom builder
@@ -1358,43 +1668,22 @@ impl ElicitationSchemaBuilder {
         name: impl Into<String>,
         f: impl FnOnce(BooleanSchema) -> BooleanSchema,
     ) -> Self {
-        self.property(name, PrimitiveSchema::Boolean(f(BooleanSchema::new())))
+        self.property(
+            name,
+            PrimitiveSchemaDefinition::Boolean(f(BooleanSchema::new())),
+        )
     }
 
     // Enum convenience methods
 
     /// Add a required enum property using EnumSchema
     pub fn required_enum_schema(self, name: impl Into<String>, enum_schema: EnumSchema) -> Self {
-        self.required_property(name, PrimitiveSchema::Enum(enum_schema))
+        self.required_property(name, PrimitiveSchemaDefinition::Enum(enum_schema))
     }
 
     /// Add an optional enum property using EnumSchema
     pub fn optional_enum_schema(self, name: impl Into<String>, enum_schema: EnumSchema) -> Self {
-        self.property(name, PrimitiveSchema::Enum(enum_schema))
-    }
-
-    /// Add a required enum property using values. Creates an untitled single-select enum.
-    #[deprecated(
-        since = "0.12.0",
-        note = "Use ElicitationSchemaBuilder::required_enum_schema with EnumSchema::builder instead"
-    )]
-    pub fn required_enum(self, name: impl Into<String>, values: Vec<String>) -> Self {
-        self.required_property(
-            name,
-            PrimitiveSchema::Enum(EnumSchema::builder(values).build()),
-        )
-    }
-
-    /// Add an optional enum property using values. Creates an untitled single-select enum.
-    #[deprecated(
-        since = "0.12.0",
-        note = "Use ElicitationSchemaBuilder::optional_enum_schema with EnumSchema::builder instead"
-    )]
-    pub fn optional_enum(self, name: impl Into<String>, values: Vec<String>) -> Self {
-        self.property(
-            name,
-            PrimitiveSchema::Enum(EnumSchema::builder(values).build()),
-        )
+        self.property(name, PrimitiveSchemaDefinition::Enum(enum_schema))
     }
 
     /// Mark an existing property as required
@@ -1432,10 +1721,13 @@ impl ElicitationSchemaBuilder {
             }
         }
 
+        let property_order = Some(self.properties.keys().cloned().collect());
         Ok(ElicitationSchema {
+            schema: None,
             type_: ObjectTypeConst,
             title: self.title,
             properties: self.properties,
+            property_order,
             required: if self.required.is_empty() {
                 None
             } else {
@@ -1458,49 +1750,70 @@ impl ElicitationSchemaBuilder {
 #[cfg(test)]
 mod tests {
     use anyhow::anyhow;
+    use rstest::rstest;
     use serde_json::json;
 
     use super::*;
 
-    #[test]
-    fn test_string_schema_serialization() {
-        let schema = StringSchema::email().description("Email address");
-        let json = serde_json::to_value(&schema).unwrap();
-
-        assert_eq!(json["type"], "string");
-        assert_eq!(json["format"], "email");
-        assert_eq!(json["description"], "Email address");
+    fn string_schema_json() -> serde_json::Value {
+        serde_json::to_value(StringSchema::email().description("Email address")).unwrap()
     }
 
-    #[test]
-    fn test_number_schema_serialization() {
-        let schema = NumberSchema::new()
-            .range(0.0, 100.0)
-            .description("Percentage");
-        let json = serde_json::to_value(&schema).unwrap();
-
-        assert_eq!(json["type"], "number");
-        assert_eq!(json["minimum"], 0.0);
-        assert_eq!(json["maximum"], 100.0);
+    fn number_schema_json() -> serde_json::Value {
+        serde_json::to_value(
+            NumberSchema::new()
+                .range(0.0, 100.0)
+                .description("Percentage"),
+        )
+        .unwrap()
     }
 
-    #[test]
-    fn test_integer_schema_serialization() {
-        let schema = IntegerSchema::new().range(0, 150);
-        let json = serde_json::to_value(&schema).unwrap();
-
-        assert_eq!(json["type"], "integer");
-        assert_eq!(json["minimum"], 0);
-        assert_eq!(json["maximum"], 150);
+    fn integer_schema_json() -> serde_json::Value {
+        serde_json::to_value(IntegerSchema::new().range(0, 150)).unwrap()
     }
 
-    #[test]
-    fn test_boolean_schema_serialization() {
-        let schema = BooleanSchema::new().with_default(true);
-        let json = serde_json::to_value(&schema).unwrap();
+    fn boolean_schema_json() -> serde_json::Value {
+        serde_json::to_value(BooleanSchema::new().with_default(true)).unwrap()
+    }
 
-        assert_eq!(json["type"], "boolean");
-        assert_eq!(json["default"], true);
+    #[rstest]
+    #[case::string_schema(
+        string_schema_json,
+        json!({
+            "type": "string",
+            "format": "email",
+            "description": "Email address",
+        })
+    )]
+    #[case::number_schema(
+        number_schema_json,
+        json!({
+            "type": "number",
+            "description": "Percentage",
+            "minimum": 0.0,
+            "maximum": 100.0,
+        })
+    )]
+    #[case::integer_schema(
+        integer_schema_json,
+        json!({
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 150,
+        })
+    )]
+    #[case::boolean_schema(
+        boolean_schema_json,
+        json!({
+            "type": "boolean",
+            "default": true,
+        })
+    )]
+    fn primitive_schema_serializes_to_expected_json(
+        #[case] schema_json: fn() -> serde_json::Value,
+        #[case] expected: serde_json::Value,
+    ) {
+        assert_eq!(schema_json(), expected);
     }
 
     #[test]
@@ -1560,6 +1873,121 @@ mod tests {
     }
 
     #[test]
+    fn test_enum_schema_legacy_serialization() -> anyhow::Result<()> {
+        let schema = EnumSchema::Legacy(LegacyEnumSchema {
+            type_: StringTypeConst,
+            title: Some("Legacy Enum".into()),
+            description: Some("A legacy enum schema".into()),
+            enum_: vec!["A".to_string(), "B".to_string()],
+            enum_names: Some(vec!["Option A".to_string(), "Option B".to_string()]),
+            default: None,
+        });
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "string");
+        assert_eq!(json["title"], "Legacy Enum");
+        assert_eq!(json["description"], "A legacy enum schema");
+        assert_eq!(json["enum"], json!(["A", "B"]));
+        assert_eq!(json["enumNames"], json!(["Option A", "Option B"]));
+        Ok(())
+    }
+
+    #[test]
+    fn test_legacy_enum_schema_roundtrip_preserves_enum_names() -> anyhow::Result<()> {
+        // Regression test for: legacy enum payload with `enumNames` was silently
+        // deserialized as `UntitledSingleSelectEnumSchema` (which has no `enumNames`
+        // field), causing the array to be dropped on re-serialization.
+        let input = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "choice": {
+                    "type": "string",
+                    "enum": ["opt1", "opt2", "opt3"],
+                    "enumNames": ["Option One", "Option Two", "Option Three"]
+                }
+            }
+        });
+        let schema: ElicitationSchema = serde_json::from_value(input.clone())?;
+        let output = serde_json::to_value(&schema)?;
+        assert_eq!(
+            output["properties"]["choice"]["enumNames"],
+            serde_json::json!(["Option One", "Option Two", "Option Three"]),
+        );
+        let input = r#"{"type":"object","properties":{"firstName":{"type":"string"},"lastName":{"type":"string"},"email":{"type":"string"}}}"#;
+        let ordered: ElicitationSchema = serde_json::from_str(input)?;
+        assert_eq!(
+            ordered.property_order.as_ref().unwrap().join(","),
+            "firstName,lastName,email",
+        );
+        assert_eq!(serde_json::to_string(&ordered)?, input);
+        Ok(())
+    }
+
+    #[test]
+    fn test_elicitation_schema_preserves_schema_dialect_roundtrip() -> anyhow::Result<()> {
+        // Regression test for #1168: a top-level `$schema` dialect declaration on a
+        // `requestedSchema` was silently dropped, because the wire bridge struct had
+        // no field to hold it. It must survive a decode/re-encode round-trip.
+        let input = serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" }
+            }
+        });
+        let schema: ElicitationSchema = serde_json::from_value(input.clone())?;
+        assert_eq!(
+            schema.schema.as_deref(),
+            Some("https://json-schema.org/draft/2020-12/schema"),
+        );
+        let output = serde_json::to_value(&schema)?;
+        assert_eq!(output, input);
+        Ok(())
+    }
+
+    #[test]
+    fn test_elicitation_schema_omits_schema_dialect_when_absent() -> anyhow::Result<()> {
+        // A schema with no dialect must not emit a `$schema` key (no `"$schema": null`).
+        let input = serde_json::json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" } }
+        });
+        let schema: ElicitationSchema = serde_json::from_value(input)?;
+        assert!(schema.schema.is_none());
+        let json = serde_json::to_value(&schema)?;
+        assert!(json.get("$schema").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_elicitation_schema_with_schema_setter_serializes_dialect() -> anyhow::Result<()> {
+        let schema = ElicitationSchema::new(BTreeMap::new())
+            .with_schema("https://json-schema.org/draft/2020-12/schema");
+        let json = serde_json::to_value(&schema)?;
+        assert_eq!(
+            json["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_legacy_enum_schema_no_enum_names_omits_field() -> anyhow::Result<()> {
+        // `LegacyEnumSchema` with `enum_names: None` must not serialize `"enumNames": null`.
+        let schema = EnumSchema::Legacy(LegacyEnumSchema {
+            type_: StringTypeConst,
+            title: None,
+            description: None,
+            enum_: vec!["a".to_string(), "b".to_string()],
+            enum_names: None,
+            default: None,
+        });
+        let json = serde_json::to_value(&schema)?;
+        assert!(!json.as_object().unwrap().contains_key("enumNames"));
+        Ok(())
+    }
+
+    #[test]
     fn test_enum_schema_titled_multi_select_serialization() -> anyhow::Result<()> {
         let schema = EnumSchema::builder(vec!["US".to_string(), "UK".to_string()])
             .enum_titles(vec![
@@ -1591,20 +2019,170 @@ mod tests {
     }
 
     #[test]
+    fn test_enum_schema_single_select_with_default() -> anyhow::Result<()> {
+        let schema = EnumSchema::builder(vec![
+            "red".to_string(),
+            "green".to_string(),
+            "blue".to_string(),
+        ])
+        .with_default("green")
+        .map_err(|e| anyhow!("{e}"))?
+        .description("Favorite color")
+        .build();
+
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "string");
+        assert_eq!(json["enum"], json!(["red", "green", "blue"]));
+        assert_eq!(json["default"], "green");
+        assert_eq!(json["description"], "Favorite color");
+        Ok(())
+    }
+
+    #[test]
+    fn test_enum_schema_multi_select_with_default() -> anyhow::Result<()> {
+        let schema = EnumSchema::builder(vec![
+            "red".to_string(),
+            "green".to_string(),
+            "blue".to_string(),
+        ])
+        .multiselect()
+        .with_default(vec!["red".to_string(), "blue".to_string()])
+        .map_err(|e| anyhow!("{e}"))?
+        .min_items(1)
+        .map_err(|e| anyhow!("{e}"))?
+        .max_items(3)
+        .map_err(|e| anyhow!("{e}"))?
+        .build();
+
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "array");
+        assert_eq!(json["items"]["enum"], json!(["red", "green", "blue"]));
+        assert_eq!(json["default"], json!(["red", "blue"]));
+        assert_eq!(json["minItems"], 1);
+        assert_eq!(json["maxItems"], 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_enum_schema_transition_clears_defaults() -> anyhow::Result<()> {
+        // Start with single-select with default
+        let builder = EnumSchema::builder(vec!["A".to_string(), "B".to_string()])
+            .with_default("A")
+            .map_err(|e| anyhow!("{e}"))?;
+
+        // Transition to multi-select should clear the default
+        let schema = builder.multiselect().build();
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "array");
+        assert!(json["default"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn test_enum_schema_multi_to_single_transition() -> anyhow::Result<()> {
+        // Start with multi-select with defaults
+        let builder = EnumSchema::builder(vec!["A".to_string(), "B".to_string(), "C".to_string()])
+            .multiselect()
+            .with_default(vec!["A".to_string(), "B".to_string()])
+            .map_err(|e| anyhow!("{e}"))?
+            .min_items(1)
+            .map_err(|e| anyhow!("{e}"))?;
+
+        // Transition back to single-select should clear defaults and min/max items
+        let schema = builder.single_select().build();
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "string");
+        assert!(json["default"].is_null());
+        assert!(json["minItems"].is_null());
+        assert!(json["maxItems"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn test_enum_schema_invalid_single_default() {
+        let result = EnumSchema::builder(vec!["A".to_string(), "B".to_string()]).with_default("C");
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Provided default value is not in enum values"
+        );
+    }
+
+    #[test]
+    fn test_enum_schema_invalid_multi_default() {
+        let result = EnumSchema::builder(vec!["A".to_string(), "B".to_string()])
+            .multiselect()
+            .with_default(vec!["A".to_string(), "C".to_string()]);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "One of the provided default values is not in enum values"
+        );
+    }
+
+    #[test]
+    fn test_enum_schema_titled_with_default() -> anyhow::Result<()> {
+        let schema = EnumSchema::builder(vec!["US".to_string(), "UK".to_string()])
+            .enum_titles(vec![
+                "United States".to_string(),
+                "United Kingdom".to_string(),
+            ])
+            .map_err(|e| anyhow!("{e}"))?
+            .with_default("UK")
+            .map_err(|e| anyhow!("{e}"))?
+            .build();
+
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "string");
+        assert_eq!(json["default"], "UK");
+        assert_eq!(
+            json["oneOf"],
+            json!([
+                {"const": "US", "title": "United States"},
+                {"const": "UK", "title": "United Kingdom"}
+            ])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_enum_schema_untitled_after_titled() -> anyhow::Result<()> {
+        let schema = EnumSchema::builder(vec!["A".to_string(), "B".to_string()])
+            .enum_titles(vec!["Option A".to_string(), "Option B".to_string()])
+            .map_err(|e| anyhow!("{e}"))?
+            .untitled()
+            .build();
+
+        let json = serde_json::to_value(&schema)?;
+
+        assert_eq!(json["type"], "string");
+        assert_eq!(json["enum"], json!(["A", "B"]));
+        assert!(json["oneOf"].is_null());
+        Ok(())
+    }
+
+    #[test]
     fn test_primitive_schema_enum_deserialization() {
         // Test that enum schemas deserialize as Enum variant, not String
         let json = json!({
             "type": "string",
             "enum": ["a", "b"]
         });
-        let schema: PrimitiveSchema = serde_json::from_value(json).unwrap();
-        assert!(matches!(schema, PrimitiveSchema::Enum(_)));
+        let schema: PrimitiveSchemaDefinition = serde_json::from_value(json).unwrap();
+        assert!(matches!(schema, PrimitiveSchemaDefinition::Enum(_)));
         // Test that string schemas deserialize as String variant
         let json = json!({
             "type": "string"
         });
-        let schema: PrimitiveSchema = serde_json::from_value(json).unwrap();
-        assert!(matches!(schema, PrimitiveSchema::String(_)));
+        let schema: PrimitiveSchemaDefinition = serde_json::from_value(json).unwrap();
+        assert!(matches!(schema, PrimitiveSchemaDefinition::String(_)));
     }
 
     #[test]

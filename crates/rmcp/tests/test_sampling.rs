@@ -1,5 +1,5 @@
-//cargo test --test test_sampling --features "client server"
-
+#![cfg(not(feature = "local"))]
+#![allow(deprecated)]
 mod common;
 
 use anyhow::Result;
@@ -9,17 +9,12 @@ use rmcp::{
     model::*,
     service::{RequestContext, Service},
 };
-use tokio_util::sync::CancellationToken;
+use rstest::rstest;
 
 #[tokio::test]
 async fn test_basic_sampling_message_creation() -> Result<()> {
-    // Test basic sampling message structure
-    let message = SamplingMessage {
-        role: Role::User,
-        content: Content::text("What is the capital of France?"),
-    };
+    let message = SamplingMessage::user_text("What is the capital of France?");
 
-    // Verify serialization/deserialization
     let json = serde_json::to_string(&message)?;
     let deserialized: SamplingMessage = serde_json::from_str(&json)?;
     assert_eq!(message, deserialized);
@@ -30,34 +25,25 @@ async fn test_basic_sampling_message_creation() -> Result<()> {
 
 #[tokio::test]
 async fn test_sampling_request_params() -> Result<()> {
-    // Test sampling request parameters structure
-    let params = CreateMessageRequestParam {
-        messages: vec![SamplingMessage {
-            role: Role::User,
-            content: Content::text("Hello, world!"),
-        }],
-        model_preferences: Some(ModelPreferences {
-            hints: Some(vec![ModelHint {
-                name: Some("claude".to_string()),
-            }]),
-            cost_priority: Some(0.5),
-            speed_priority: Some(0.8),
-            intelligence_priority: Some(0.7),
-        }),
-        system_prompt: Some("You are a helpful assistant.".to_string()),
-        temperature: Some(0.7),
-        max_tokens: 100,
-        stop_sequences: Some(vec!["STOP".to_string()]),
-        include_context: Some(ContextInclusion::None),
-        metadata: Some(serde_json::json!({"test": "value"})),
-    };
+    let params =
+        CreateMessageRequestParams::new(vec![SamplingMessage::user_text("Hello, world!")], 100)
+            .with_model_preferences(
+                ModelPreferences::new()
+                    .with_hints(vec![ModelHint::new("claude")])
+                    .with_cost_priority(0.5)
+                    .with_speed_priority(0.8)
+                    .with_intelligence_priority(0.7),
+            )
+            .with_system_prompt("You are a helpful assistant.")
+            .with_temperature(0.7)
+            .with_stop_sequences(vec!["STOP".to_string()])
+            .with_include_context(ContextInclusion::None)
+            .with_metadata(serde_json::json!({"test": "value"}));
 
-    // Verify serialization/deserialization
     let json = serde_json::to_string(&params)?;
-    let deserialized: CreateMessageRequestParam = serde_json::from_str(&json)?;
+    let deserialized: CreateMessageRequestParams = serde_json::from_str(&json)?;
     assert_eq!(params, deserialized);
 
-    // Verify specific fields
     assert_eq!(params.messages.len(), 1);
     assert_eq!(params.max_tokens, 100);
     assert_eq!(params.temperature, Some(0.7));
@@ -67,22 +53,16 @@ async fn test_sampling_request_params() -> Result<()> {
 
 #[tokio::test]
 async fn test_sampling_result_structure() -> Result<()> {
-    // Test sampling result structure
-    let result = CreateMessageResult {
-        message: SamplingMessage {
-            role: Role::Assistant,
-            content: Content::text("The capital of France is Paris."),
-        },
-        model: "test-model".to_string(),
-        stop_reason: Some(CreateMessageResult::STOP_REASON_END_TURN.to_string()),
-    };
+    let result = CreateMessageResult::new(
+        SamplingMessage::assistant_text("The capital of France is Paris."),
+        "test-model".to_string(),
+    )
+    .with_stop_reason(CreateMessageResult::STOP_REASON_END_TURN);
 
-    // Verify serialization/deserialization
     let json = serde_json::to_string(&result)?;
     let deserialized: CreateMessageResult = serde_json::from_str(&json)?;
     assert_eq!(result, deserialized);
 
-    // Verify specific fields
     assert_eq!(result.message.role, Role::Assistant);
     assert_eq!(result.model, "test-model");
     assert_eq!(
@@ -95,7 +75,6 @@ async fn test_sampling_result_structure() -> Result<()> {
 
 #[tokio::test]
 async fn test_sampling_context_inclusion_enum() -> Result<()> {
-    // Test context inclusion enum values
     let test_cases = vec![
         (ContextInclusion::None, "none"),
         (ContextInclusion::ThisServer, "thisServer"),
@@ -117,60 +96,41 @@ async fn test_sampling_context_inclusion_enum() -> Result<()> {
 async fn test_sampling_integration_with_test_handlers() -> Result<()> {
     let (server_transport, client_transport) = tokio::io::duplex(4096);
 
-    // Start server
     let server_handle = tokio::spawn(async move {
         let server = TestServer::new().serve(server_transport).await?;
         server.waiting().await?;
         anyhow::Ok(())
     });
 
-    // Start client that honors sampling requests
     let handler = TestClientHandler::new(true, true);
     let client = handler.clone().serve(client_transport).await?;
 
-    // Wait for initialization
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Test sampling with context inclusion
-    let request = ServerRequest::CreateMessageRequest(CreateMessageRequest {
-        method: Default::default(),
-        params: CreateMessageRequestParam {
-            messages: vec![SamplingMessage {
-                role: Role::User,
-                content: Content::text("What is the capital of France?"),
-            }],
-            include_context: Some(ContextInclusion::ThisServer),
-            model_preferences: Some(ModelPreferences {
-                hints: Some(vec![ModelHint {
-                    name: Some("test-model".to_string()),
-                }]),
-                cost_priority: Some(0.5),
-                speed_priority: Some(0.8),
-                intelligence_priority: Some(0.7),
-            }),
-            system_prompt: Some("You are a helpful assistant.".to_string()),
-            temperature: Some(0.7),
-            max_tokens: 100,
-            stop_sequences: None,
-            metadata: None,
-        },
-        extensions: Default::default(),
-    });
+    let request = ServerRequest::CreateMessageRequest(CreateMessageRequest::new(
+        CreateMessageRequestParams::new(
+            vec![SamplingMessage::user_text("What is the capital of France?")],
+            100,
+        )
+        .with_include_context(ContextInclusion::ThisServer)
+        .with_model_preferences(
+            ModelPreferences::new()
+                .with_hints(vec![ModelHint::new("test-model")])
+                .with_cost_priority(0.5)
+                .with_speed_priority(0.8)
+                .with_intelligence_priority(0.7),
+        )
+        .with_system_prompt("You are a helpful assistant.")
+        .with_temperature(0.7),
+    ));
 
     let result = handler
         .handle_request(
             request.clone(),
-            RequestContext {
-                peer: client.peer().clone(),
-                ct: CancellationToken::new(),
-                id: NumberOrString::Number(1),
-                meta: Default::default(),
-                extensions: Default::default(),
-            },
+            RequestContext::new(NumberOrString::Number(1), client.peer().clone()),
         )
         .await?;
 
-    // Verify the response
     if let ClientResult::CreateMessageResult(result) = result {
         assert_eq!(result.message.role, Role::Assistant);
         assert_eq!(result.model, "test-model");
@@ -179,7 +139,15 @@ async fn test_sampling_integration_with_test_handlers() -> Result<()> {
             Some(CreateMessageResult::STOP_REASON_END_TURN.to_string())
         );
 
-        let response_text = result.message.content.as_text().unwrap().text.as_str();
+        let response_text = result
+            .message
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .as_str();
         assert!(
             response_text.contains("test context"),
             "Response should include context for ThisServer inclusion"
@@ -197,58 +165,42 @@ async fn test_sampling_integration_with_test_handlers() -> Result<()> {
 async fn test_sampling_no_context_inclusion() -> Result<()> {
     let (server_transport, client_transport) = tokio::io::duplex(4096);
 
-    // Start server
     let server_handle = tokio::spawn(async move {
         let server = TestServer::new().serve(server_transport).await?;
         server.waiting().await?;
         anyhow::Ok(())
     });
 
-    // Start client that honors sampling requests
     let handler = TestClientHandler::new(true, true);
     let client = handler.clone().serve(client_transport).await?;
 
-    // Wait for initialization
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Test sampling without context inclusion
-    let request = ServerRequest::CreateMessageRequest(CreateMessageRequest {
-        method: Default::default(),
-        params: CreateMessageRequestParam {
-            messages: vec![SamplingMessage {
-                role: Role::User,
-                content: Content::text("Hello"),
-            }],
-            include_context: Some(ContextInclusion::None),
-            model_preferences: None,
-            system_prompt: None,
-            temperature: None,
-            max_tokens: 50,
-            stop_sequences: None,
-            metadata: None,
-        },
-        extensions: Default::default(),
-    });
+    let request = ServerRequest::CreateMessageRequest(CreateMessageRequest::new(
+        CreateMessageRequestParams::new(vec![SamplingMessage::user_text("Hello")], 50)
+            .with_include_context(ContextInclusion::None),
+    ));
 
     let result = handler
         .handle_request(
             request.clone(),
-            RequestContext {
-                peer: client.peer().clone(),
-                ct: CancellationToken::new(),
-                id: NumberOrString::Number(2),
-                meta: Default::default(),
-                extensions: Default::default(),
-            },
+            RequestContext::new(NumberOrString::Number(2), client.peer().clone()),
         )
         .await?;
 
-    // Verify the response
     if let ClientResult::CreateMessageResult(result) = result {
         assert_eq!(result.message.role, Role::Assistant);
         assert_eq!(result.model, "test-model");
 
-        let response_text = result.message.content.as_text().unwrap().text.as_str();
+        let response_text = result
+            .message
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .as_str();
         assert!(
             !response_text.contains("test context"),
             "Response should not include context for None inclusion"
@@ -266,56 +218,527 @@ async fn test_sampling_no_context_inclusion() -> Result<()> {
 async fn test_sampling_error_invalid_message_sequence() -> Result<()> {
     let (server_transport, client_transport) = tokio::io::duplex(4096);
 
-    // Start server
     let server_handle = tokio::spawn(async move {
         let server = TestServer::new().serve(server_transport).await?;
         server.waiting().await?;
         anyhow::Ok(())
     });
 
-    // Start client
     let handler = TestClientHandler::new(true, true);
     let client = handler.clone().serve(client_transport).await?;
 
-    // Wait for initialization
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Test sampling with no user messages (should fail)
-    let request = ServerRequest::CreateMessageRequest(CreateMessageRequest {
-        method: Default::default(),
-        params: CreateMessageRequestParam {
-            messages: vec![SamplingMessage {
-                role: Role::Assistant,
-                content: Content::text("I'm an assistant message without a user message"),
-            }],
-            include_context: Some(ContextInclusion::None),
-            model_preferences: None,
-            system_prompt: None,
-            temperature: None,
-            max_tokens: 50,
-            stop_sequences: None,
-            metadata: None,
-        },
-        extensions: Default::default(),
-    });
+    let request = ServerRequest::CreateMessageRequest(CreateMessageRequest::new(
+        CreateMessageRequestParams::new(
+            vec![SamplingMessage::assistant_text(
+                "I'm an assistant message without a user message",
+            )],
+            50,
+        )
+        .with_include_context(ContextInclusion::None),
+    ));
 
     let result = handler
         .handle_request(
             request.clone(),
-            RequestContext {
-                peer: client.peer().clone(),
-                ct: CancellationToken::new(),
-                id: NumberOrString::Number(3),
-                meta: Default::default(),
-                extensions: Default::default(),
-            },
+            RequestContext::new(NumberOrString::Number(3), client.peer().clone()),
         )
         .await;
 
-    // This should result in an error
     assert!(result.is_err());
 
     client.cancel().await?;
     server_handle.await??;
     Ok(())
+}
+
+#[tokio::test]
+async fn test_tool_choice_serialization() -> Result<()> {
+    let auto = ToolChoice::auto();
+    let json = serde_json::to_string(&auto)?;
+    assert!(json.contains("auto"));
+    let deserialized: ToolChoice = serde_json::from_str(&json)?;
+    assert_eq!(auto, deserialized);
+
+    let required = ToolChoice::required();
+    let json = serde_json::to_string(&required)?;
+    assert!(json.contains("required"));
+    let deserialized: ToolChoice = serde_json::from_str(&json)?;
+    assert_eq!(required, deserialized);
+
+    let none = ToolChoice::none();
+    let json = serde_json::to_string(&none)?;
+    assert!(json.contains("none"));
+    let deserialized: ToolChoice = serde_json::from_str(&json)?;
+    assert_eq!(none, deserialized);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sampling_with_tools() -> Result<()> {
+    use std::sync::Arc;
+
+    let tool = Tool::new(
+        "get_weather",
+        "Get the current weather for a location",
+        Arc::new(
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    }
+                },
+                "required": ["location"]
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        ),
+    );
+
+    let params = CreateMessageRequestParams::new(
+        vec![SamplingMessage::user_text(
+            "What's the weather in San Francisco?",
+        )],
+        100,
+    )
+    .with_tools(vec![tool])
+    .with_tool_choice(ToolChoice::auto());
+
+    let json = serde_json::to_string(&params)?;
+    let deserialized: CreateMessageRequestParams = serde_json::from_str(&json)?;
+
+    assert!(deserialized.tools.is_some());
+    assert_eq!(deserialized.tools.as_ref().unwrap().len(), 1);
+    assert_eq!(deserialized.tools.as_ref().unwrap()[0].name, "get_weather");
+    assert!(deserialized.tool_choice.is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_tool_use_content_serialization() -> Result<()> {
+    let tool_use = ToolUseContent::new(
+        "call_123",
+        "get_weather",
+        serde_json::json!({
+            "location": "San Francisco, CA"
+        })
+        .as_object()
+        .unwrap()
+        .clone(),
+    );
+
+    let json = serde_json::to_string(&tool_use)?;
+    let deserialized: ToolUseContent = serde_json::from_str(&json)?;
+    assert_eq!(tool_use, deserialized);
+    assert_eq!(deserialized.id, "call_123");
+    assert_eq!(deserialized.name, "get_weather");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_tool_result_content_serialization() -> Result<()> {
+    let tool_result = ToolResultContent::new(
+        "call_123",
+        vec![ContentBlock::text(
+            "The weather in San Francisco is 72°F and sunny.",
+        )],
+    );
+
+    let json = serde_json::to_string(&tool_result)?;
+    let deserialized: ToolResultContent = serde_json::from_str(&json)?;
+    assert_eq!(tool_result, deserialized);
+    assert_eq!(deserialized.tool_use_id, "call_123");
+    assert!(!deserialized.content.is_empty());
+
+    Ok(())
+}
+
+#[test]
+fn test_tool_result_content_requires_content() {
+    let raw = serde_json::json!({
+        "toolUseId": "call_123"
+    });
+
+    let err = serde_json::from_value::<ToolResultContent>(raw).unwrap_err();
+
+    assert!(err.to_string().contains("missing field `content`"));
+}
+
+#[rstest]
+#[case::array(serde_json::json!([{ "city": "SF", "temp": 72 }, { "city": "NY", "temp": 65 }]))]
+#[case::string(serde_json::json!("sunny"))]
+#[case::integer(serde_json::json!(42))]
+#[case::float(serde_json::json!(3.14))]
+#[case::boolean(serde_json::json!(true))]
+fn tool_result_content_round_trips_non_object_structured_content(
+    #[case] structured: serde_json::Value,
+) -> Result<()> {
+    let mut tool_result = ToolResultContent::new("call_123", vec![ContentBlock::text("x")]);
+    tool_result.structured_content = Some(structured);
+
+    let json = serde_json::to_string(&tool_result)?;
+    let deserialized: ToolResultContent = serde_json::from_str(&json)?;
+    assert_eq!(tool_result, deserialized);
+
+    Ok(())
+}
+
+// `null` is a valid JSON value, but `Option<Value>` deserializes JSON `null`
+// as `None`, so `Some(Value::Null)` collapses to `None` on round-trip.
+#[test]
+fn tool_result_content_null_structured_content_round_trips_to_none() -> Result<()> {
+    let mut tool_result = ToolResultContent::new("call_123", vec![ContentBlock::text("x")]);
+    tool_result.structured_content = Some(serde_json::Value::Null);
+
+    let json = serde_json::to_string(&tool_result)?;
+    let deserialized: ToolResultContent = serde_json::from_str(&json)?;
+    assert_eq!(deserialized.structured_content, None);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sampling_message_with_tool_use() -> Result<()> {
+    let message = SamplingMessage::assistant_tool_use(
+        "call_123",
+        "get_weather",
+        serde_json::json!({
+            "location": "San Francisco, CA"
+        })
+        .as_object()
+        .unwrap()
+        .clone(),
+    );
+
+    let json = serde_json::to_string(&message)?;
+    let deserialized: SamplingMessage = serde_json::from_str(&json)?;
+    assert_eq!(message, deserialized);
+    assert_eq!(deserialized.role, Role::Assistant);
+
+    let tool_use = deserialized.content.first().unwrap().as_tool_use().unwrap();
+    assert_eq!(tool_use.name, "get_weather");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sampling_message_with_tool_result() -> Result<()> {
+    let message =
+        SamplingMessage::user_tool_result("call_123", vec![ContentBlock::text("72°F and sunny")]);
+
+    let json = serde_json::to_string(&message)?;
+    let deserialized: SamplingMessage = serde_json::from_str(&json)?;
+    assert_eq!(message, deserialized);
+    assert_eq!(deserialized.role, Role::User);
+
+    let tool_result = deserialized
+        .content
+        .first()
+        .unwrap()
+        .as_tool_result()
+        .unwrap();
+    assert_eq!(tool_result.tool_use_id, "call_123");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_message_result_tool_use_stop_reason() -> Result<()> {
+    let result = CreateMessageResult::new(
+        SamplingMessage::assistant_tool_use(
+            "call_123",
+            "get_weather",
+            serde_json::json!({
+                "location": "San Francisco"
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        ),
+        "test-model".to_string(),
+    )
+    .with_stop_reason(CreateMessageResult::STOP_REASON_TOOL_USE);
+
+    let json = serde_json::to_string(&result)?;
+    let deserialized: CreateMessageResult = serde_json::from_str(&json)?;
+    assert_eq!(result, deserialized);
+    assert_eq!(deserialized.stop_reason, Some("toolUse".to_string()));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sampling_capability() -> Result<()> {
+    let mut cap = SamplingCapability::default();
+    cap.tools = Some(JsonObject::default());
+
+    let json = serde_json::to_string(&cap)?;
+    let deserialized: SamplingCapability = serde_json::from_str(&json)?;
+    assert_eq!(cap, deserialized);
+    assert!(deserialized.tools.is_some());
+    assert!(deserialized.context.is_none());
+
+    let client_cap = ClientCapabilities::builder()
+        .enable_sampling()
+        .enable_sampling_tools()
+        .build();
+
+    assert!(client_cap.sampling.is_some());
+    assert!(client_cap.sampling.as_ref().unwrap().tools.is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_backward_compat_sampling_message_deserialization() -> Result<()> {
+    let old_format_json = r#"{
+        "role": "user",
+        "content": {
+            "type": "text",
+            "text": "Hello, world!"
+        }
+    }"#;
+
+    let message: SamplingMessage = serde_json::from_str(old_format_json)?;
+    assert_eq!(message.role, Role::User);
+    let text = message.content.first().unwrap().as_text().unwrap();
+    assert_eq!(text.text, "Hello, world!");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_backward_compat_sampling_message_with_image() -> Result<()> {
+    let old_format_json = r#"{
+        "role": "user",
+        "content": {
+            "type": "image",
+            "data": "base64data",
+            "mimeType": "image/png"
+        }
+    }"#;
+
+    let message: SamplingMessage = serde_json::from_str(old_format_json)?;
+    assert_eq!(message.role, Role::User);
+    assert_eq!(message.content.len(), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_backward_compat_sampling_capability_empty_object() -> Result<()> {
+    let empty_json = "{}";
+    let cap: SamplingCapability = serde_json::from_str(empty_json)?;
+    assert!(cap.tools.is_none());
+    assert!(cap.context.is_none());
+
+    let client_cap_json = r#"{"sampling": {}}"#;
+    let client_cap: ClientCapabilities = serde_json::from_str(client_cap_json)?;
+    assert!(client_cap.sampling.is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_content_to_sampling_message_content_conversion() -> Result<()> {
+    use std::convert::TryInto;
+
+    let content = ContentBlock::text("Hello");
+    let sampling_content: SamplingMessageContentBlock =
+        content.try_into().map_err(|e: &str| anyhow::anyhow!(e))?;
+    assert!(sampling_content.as_text().is_some());
+    assert_eq!(sampling_content.as_text().unwrap().text, "Hello");
+
+    let content = ContentBlock::image("base64data", "image/png");
+    let sampling_content: SamplingMessageContentBlock =
+        content.try_into().map_err(|e: &str| anyhow::anyhow!(e))?;
+    assert!(matches!(
+        sampling_content,
+        SamplingMessageContentBlock::Image(_)
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_content_to_sampling_content_conversion() -> Result<()> {
+    use std::convert::TryInto;
+
+    let content = ContentBlock::text("Hello");
+    let sampling_content: SamplingContent<SamplingMessageContentBlock> =
+        content.try_into().map_err(|e: &str| anyhow::anyhow!(e))?;
+    assert_eq!(sampling_content.len(), 1);
+    assert!(sampling_content.first().unwrap().as_text().is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_content_conversion_unsupported_variants() {
+    use std::convert::TryInto;
+
+    use rmcp::model::ResourceContents;
+
+    let resource_content = ContentBlock::resource(ResourceContents::TextResourceContents {
+        uri: "file:///test.txt".to_string(),
+        mime_type: Some("text/plain".to_string()),
+        text: "test".to_string(),
+        meta: None,
+    });
+
+    let result: Result<SamplingMessageContentBlock, _> = resource_content.try_into();
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        "Resource content is not supported in sampling messages"
+    );
+}
+
+#[tokio::test]
+async fn test_validate_rejects_tool_use_in_user_message() {
+    let params = CreateMessageRequestParams::new(
+        vec![SamplingMessage::new(
+            Role::User,
+            SamplingMessageContentBlock::tool_use("call_1", "some_tool", Default::default()),
+        )],
+        100,
+    );
+
+    let err = params.validate().unwrap_err();
+    assert!(
+        err.contains("ToolUse content is only allowed in assistant messages"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_validate_rejects_tool_result_in_assistant_message() {
+    let params = CreateMessageRequestParams::new(
+        vec![SamplingMessage::new(
+            Role::Assistant,
+            SamplingMessageContentBlock::tool_result("call_1", vec![ContentBlock::text("result")]),
+        )],
+        100,
+    );
+
+    let err = params.validate().unwrap_err();
+    assert!(
+        err.contains("ToolResult content is only allowed in user messages"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_validate_rejects_mixed_content_with_tool_result() {
+    let params = CreateMessageRequestParams::new(
+        vec![SamplingMessage::new_multiple(
+            Role::User,
+            vec![
+                SamplingMessageContentBlock::tool_result(
+                    "call_1",
+                    vec![ContentBlock::text("result")],
+                ),
+                SamplingMessageContentBlock::text("some extra text"),
+            ],
+        )],
+        100,
+    );
+
+    let err = params.validate().unwrap_err();
+    assert!(
+        err.contains("MUST NOT contain other content types"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_validate_rejects_unbalanced_tool_use_result() {
+    let params = CreateMessageRequestParams::new(
+        vec![
+            SamplingMessage::user_text("Hello"),
+            SamplingMessage::assistant_tool_use("call_1", "some_tool", Default::default()),
+        ],
+        100,
+    );
+
+    let err = params.validate().unwrap_err();
+    assert!(
+        err.contains("not balanced with ToolResult"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_validate_rejects_tool_result_without_matching_use() {
+    let params = CreateMessageRequestParams::new(
+        vec![
+            SamplingMessage::user_text("Hello"),
+            SamplingMessage::user_tool_result(
+                "nonexistent_call",
+                vec![ContentBlock::text("result")],
+            ),
+        ],
+        100,
+    );
+
+    let err = params.validate().unwrap_err();
+    assert!(
+        err.contains("has no matching ToolUse"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_validate_accepts_valid_tool_conversation() {
+    let params = CreateMessageRequestParams::new(
+        vec![
+            SamplingMessage::user_text("What's the weather?"),
+            SamplingMessage::assistant_tool_use(
+                "call_1",
+                "get_weather",
+                serde_json::json!({"location": "SF"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+            SamplingMessage::user_tool_result("call_1", vec![ContentBlock::text("72°F and sunny")]),
+            SamplingMessage::assistant_text("It's 72°F and sunny in SF."),
+        ],
+        100,
+    );
+
+    assert!(params.validate().is_ok());
+}
+
+#[tokio::test]
+async fn test_create_message_result_validate_rejects_user_role() {
+    let result = CreateMessageResult::new(
+        SamplingMessage::user_text("This should not be a user message"),
+        "test-model".to_string(),
+    )
+    .with_stop_reason(CreateMessageResult::STOP_REASON_END_TURN);
+
+    let err = result.validate().unwrap_err();
+    assert!(
+        err.contains("role must be 'assistant'"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_create_message_result_validate_accepts_assistant_role() {
+    let result = CreateMessageResult::new(
+        SamplingMessage::assistant_text("Hello!"),
+        "test-model".to_string(),
+    )
+    .with_stop_reason(CreateMessageResult::STOP_REASON_END_TURN);
+
+    assert!(result.validate().is_ok());
 }

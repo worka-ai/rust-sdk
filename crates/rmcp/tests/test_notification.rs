@@ -1,33 +1,34 @@
+#![cfg(not(feature = "local"))]
+#![allow(deprecated)]
 use std::sync::Arc;
 
 use rmcp::{
     ClientHandler, ServerHandler, ServiceExt,
     model::{
         ClientNotification, CustomNotification, ResourceUpdatedNotificationParam,
-        ServerCapabilities, ServerInfo, ServerNotification, SubscribeRequestParam,
+        ServerCapabilities, ServerInfo, ServerNotification, SubscribeRequestParams,
     },
 };
 use serde_json::json;
 use tokio::sync::{Mutex, Notify};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-pub struct Server {}
+struct Server {}
 
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder()
+        ServerInfo::new(
+            ServerCapabilities::builder()
                 .enable_resources()
                 .enable_resources_subscribe()
                 .enable_resources_list_changed()
                 .build(),
-            ..Default::default()
-        }
+        )
     }
 
     async fn subscribe(
         &self,
-        request: rmcp::model::SubscribeRequestParam,
+        request: rmcp::model::SubscribeRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<(), rmcp::ErrorData> {
         let uri = request.uri;
@@ -38,7 +39,7 @@ impl ServerHandler for Server {
             let _enter = span.enter();
 
             if let Err(e) = peer
-                .notify_resource_updated(ResourceUpdatedNotificationParam { uri: uri.clone() })
+                .notify_resource_updated(ResourceUpdatedNotificationParam::new(uri.clone()))
                 .await
             {
                 panic!("Failed to send notification: {}", e);
@@ -87,9 +88,7 @@ async fn test_server_notification() -> anyhow::Result<()> {
     .serve(client_transport)
     .await?;
     client
-        .subscribe(SubscribeRequestParam {
-            uri: "test://test-resource".to_owned(),
-        })
+        .subscribe(SubscribeRequestParams::new("test://test-resource"))
         .await?;
     receive_signal.notified().await;
     client.cancel().await?;

@@ -3,20 +3,17 @@ use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{Expr, Ident, ImplItemFn, LitStr, ReturnType, parse_quote};
 
-use crate::common::{extract_doc_line, none_expr};
+use crate::common::extract_doc_line;
 
 /// Check if a type is Json<T> and extract the inner type T
 fn extract_json_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
-    if let syn::Type::Path(type_path) = ty {
-        if let Some(last_segment) = type_path.path.segments.last() {
-            if last_segment.ident == "Json" {
-                if let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments {
-                    if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
-                        return Some(inner_type);
-                    }
-                }
-            }
-        }
+    if let syn::Type::Path(type_path) = ty
+        && let Some(last_segment) = type_path.path.segments.last()
+        && last_segment.ident == "Json"
+        && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+        && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+    {
+        return Some(inner_type);
     }
     None
 }
@@ -28,13 +25,6 @@ fn extract_schema_from_return_type(ret_type: &syn::Type) -> Option<Expr> {
     if let Some(inner_type) = extract_json_inner_type(ret_type) {
         return syn::parse2::<Expr>(quote! {
             rmcp::handler::server::tool::schema_for_output::<#inner_type>()
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Invalid output schema for Json<{}>: {}",
-                        std::any::type_name::<#inner_type>(),
-                        e
-                    )
-                })
         })
         .ok();
     }
@@ -65,13 +55,6 @@ fn extract_schema_from_return_type(ret_type: &syn::Type) -> Option<Expr> {
 
     syn::parse2::<Expr>(quote! {
         rmcp::handler::server::tool::schema_for_output::<#inner_type>()
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Invalid output schema for Result<Json<{}>, E>: {}",
-                    std::any::type_name::<#inner_type>(),
-                    e
-                )
-            })
     })
     .ok()
 }
@@ -93,6 +76,9 @@ pub struct ToolAttribute {
     pub icons: Option<Expr>,
     /// Optional metadata for the tool
     pub meta: Option<Expr>,
+    /// When true, the generated future will not require `Send`. Useful for `!Send` handlers
+    /// (e.g. single-threaded database connections). Also enabled globally by the `local` crate feature.
+    pub local: bool,
 }
 
 pub struct ResolvedToolAttribute {
@@ -101,7 +87,7 @@ pub struct ResolvedToolAttribute {
     pub description: Option<Expr>,
     pub input_schema: Expr,
     pub output_schema: Option<Expr>,
-    pub annotations: Expr,
+    pub annotations: Option<Expr>,
     pub icons: Option<Expr>,
     pub meta: Option<Expr>,
 }
@@ -123,41 +109,34 @@ impl ResolvedToolAttribute {
         } else {
             quote! { None }
         };
-        let output_schema = if let Some(output_schema) = output_schema {
-            quote! { Some(#output_schema) }
-        } else {
-            quote! { None }
-        };
-        let title = if let Some(title) = title {
-            quote! { Some(#title.into()) }
-        } else {
-            quote! { None }
-        };
-        let icons = if let Some(icons) = icons {
-            quote! { Some(#icons) }
-        } else {
-            quote! { None }
-        };
-        let meta = if let Some(meta) = meta {
-            quote! { Some(#meta) }
-        } else {
-            quote! { None }
-        };
+        let title_call = title
+            .map(|t| quote! { .with_title(#t) })
+            .unwrap_or_default();
+        let output_schema_call = output_schema
+            .map(|s| quote! { .with_raw_output_schema(#s) })
+            .unwrap_or_default();
+        let annotations_call = annotations
+            .map(|a| quote! { .with_annotations(#a) })
+            .unwrap_or_default();
+        let icons_call = icons
+            .map(|i| quote! { .with_icons(#i) })
+            .unwrap_or_default();
+        let meta_call = meta.map(|m| quote! { .with_meta(#m) }).unwrap_or_default();
         let doc_comment = format!("Generated tool metadata function for {name}");
         let doc_attr: syn::Attribute = parse_quote!(#[doc = #doc_comment]);
         let tokens = quote! {
             #doc_attr
             pub fn #fn_ident() -> rmcp::model::Tool {
-                rmcp::model::Tool {
-                    name: #name.into(),
-                    title: #title,
-                    description: #description,
-                    input_schema: #input_schema,
-                    output_schema: #output_schema,
-                    annotations: #annotations,
-                    icons: #icons,
-                    meta: #meta,
-                }
+                rmcp::model::Tool::new_with_raw(
+                    #name,
+                    #description,
+                    #input_schema,
+                )
+                #title_call
+                #output_schema_call
+                #annotations_call
+                #icons_call
+                #meta_call
             }
         };
         syn::parse2::<ImplItemFn>(tokens)
@@ -220,16 +199,20 @@ pub fn tool(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
         if let Some(params_ty) = params_ty {
             // if found, use the Parameters schema
             syn::parse2::<Expr>(quote! {
-                rmcp::handler::server::common::schema_for_type::<#params_ty>()
+                rmcp::handler::server::common::schema_for_input::<#params_ty>()
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Invalid input schema for `{}`: {}",
+                            std::any::type_name::<#params_ty>(),
+                            e
+                        )
+                    })
             })?
         } else {
             // if not found, use a default empty JSON schema object
             // TODO: should be updated according to the new specifications
             syn::parse2::<Expr>(quote! {
-                std::sync::Arc::new(serde_json::json!({
-                    "type": "object",
-                    "properties": {}
-                }).as_object().unwrap().clone())
+                rmcp::handler::server::common::schema_for_empty_input()
             })?
         }
     };
@@ -251,17 +234,17 @@ pub fn tool(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
         let idempotent_hint = wrap_option(idempotent_hint);
         let open_world_hint = wrap_option(open_world_hint);
         let token_stream = quote! {
-            Some(rmcp::model::ToolAnnotations {
-                title: #title,
-                read_only_hint: #read_only_hint,
-                destructive_hint: #destructive_hint,
-                idempotent_hint: #idempotent_hint,
-                open_world_hint: #open_world_hint,
-            })
+            rmcp::model::ToolAnnotations::from_raw(
+                #title,
+                #read_only_hint,
+                #destructive_hint,
+                #idempotent_hint,
+                #open_world_hint,
+            )
         };
-        syn::parse2::<Expr>(token_stream)?
+        Some(syn::parse2::<Expr>(token_stream)?)
     } else {
-        none_expr()?
+        None
     };
     // Handle output_schema - either explicit or generated from return type
     let output_schema_expr = attribute.output_schema.or_else(|| {
@@ -295,24 +278,34 @@ pub fn tool(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     if fn_item.sig.asyncness.is_some() {
         // 1. remove asyncness from sig
         // 2. make return type: `std::pin::Pin<Box<dyn std::future::Future<Output = #ReturnType> + Send + '_>>`
+        //    (omit `+ Send` when the `local` crate feature is active or `#[tool(local)]` is used)
         // 3. make body: { Box::pin(async move { #body }) }
+        let omit_send = cfg!(feature = "local") || attribute.local;
         let new_output = syn::parse2::<ReturnType>({
             let mut lt = quote! { 'static };
-            if let Some(receiver) = fn_item.sig.receiver() {
-                if let Some((_, receiver_lt)) = receiver.reference.as_ref() {
-                    if let Some(receiver_lt) = receiver_lt {
-                        lt = quote! { #receiver_lt };
-                    } else {
-                        lt = quote! { '_ };
-                    }
+            if let Some(receiver) = fn_item.sig.receiver()
+                && let syn::ReceiverKind::Reference(_, receiver_lt, _) = &receiver.kind
+            {
+                if let Some(receiver_lt) = receiver_lt {
+                    lt = quote! { #receiver_lt };
+                } else {
+                    lt = quote! { '_ };
                 }
             }
             match &fn_item.sig.output {
                 syn::ReturnType::Default => {
-                    quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ()> + Send + #lt>> }
+                    if omit_send {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ()> + #lt>> }
+                    } else {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ()> + Send + #lt>> }
+                    }
                 }
                 syn::ReturnType::Type(_, ty) => {
-                    quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = #ty> + Send + #lt>> }
+                    if omit_send {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = #ty> + #lt>> }
+                    } else {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = #ty> + Send + #lt>> }
+                    }
                 }
             }
         })?;
@@ -346,6 +339,20 @@ mod test {
         };
         let _input = tool(attr, input)?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_async_tool_preserves_receiver_lifetime() -> syn::Result<()> {
+        let attr = quote! {};
+        let input = quote! {
+            async fn test_tool_with_lifetime<'a>(&'a self) -> String {
+                "ok".to_string()
+            }
+        };
+        let result = tool(attr, input)?;
+
+        assert!(result.to_string().contains("+ 'a"));
         Ok(())
     }
 

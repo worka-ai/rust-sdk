@@ -1,9 +1,13 @@
+#![cfg(not(feature = "local"))]
+
 use std::sync::Arc;
 
 use rmcp::{
     ClientHandler, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolRequestParam, ClientInfo, CustomNotification, ServerCapabilities, ServerInfo},
+    model::{
+        CallToolRequestParams, ClientInfo, CustomNotification, ServerCapabilities, ServerInfo,
+    },
     schemars, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
@@ -31,11 +35,8 @@ struct EchoRequest {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for EchoServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("Echo server".into()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("Echo server")
     }
 }
 
@@ -60,31 +61,32 @@ impl ClientHandler for DummyClient {
 async fn test_inproc_tool_call() -> anyhow::Result<()> {
     let (client_transport, server_transport) = rmcp::transport::inproc::channel();
 
-    tokio::spawn(async move {
+    let server = async move {
         let server = EchoServer::new().serve(server_transport).await?;
         server.waiting().await?;
         anyhow::Ok(())
-    });
+    };
+    let client = async move {
+        let client = DummyClient::default().serve(client_transport).await?;
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("echo")
+                    .with_arguments(json!({ "input": "hello" }).as_object().unwrap().clone()),
+            )
+            .await?;
 
-    let client = DummyClient::default().serve(client_transport).await?;
+        let text = result
+            .content
+            .first()
+            .and_then(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .unwrap_or_default();
 
-    let result = client
-        .call_tool(CallToolRequestParam {
-            name: "echo".into(),
-            arguments: Some(json!({ "input": "hello" }).as_object().unwrap().clone()),
-            task: None,
-        })
-        .await?;
-
-    let text = result
-        .content
-        .first()
-        .and_then(|content| content.raw.as_text())
-        .map(|text| text.text.as_str())
-        .unwrap_or_default();
-
-    assert_eq!(text, "hello");
-    client.cancel().await?;
+        assert_eq!(text, "hello");
+        client.cancel().await?;
+        anyhow::Ok(())
+    };
+    tokio::try_join!(server, client)?;
     Ok(())
 }
 
@@ -95,11 +97,8 @@ struct NotifyServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for NotifyServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("Notify server".into()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("Notify server")
     }
 
     async fn on_initialized(&self, context: rmcp::service::NotificationContext<rmcp::RoleServer>) {
@@ -152,23 +151,26 @@ impl ClientHandler for NotifyClient {
 async fn test_inproc_notification() -> anyhow::Result<()> {
     let (client_transport, server_transport) = rmcp::transport::inproc::channel();
 
-    tokio::spawn(async move {
+    let server = async move {
         let server = NotifyServer::new().serve(server_transport).await?;
         server.waiting().await?;
         anyhow::Ok(())
-    });
+    };
+    let client = async move {
+        let payload = Arc::new(Mutex::new(None));
+        let signal = Arc::new(Notify::new());
+        let client = NotifyClient {
+            payload: payload.clone(),
+            signal: signal.clone(),
+        }
+        .serve(client_transport)
+        .await?;
 
-    let payload = Arc::new(Mutex::new(None));
-    let signal = Arc::new(Notify::new());
-    let client = NotifyClient {
-        payload: payload.clone(),
-        signal: signal.clone(),
-    }
-    .serve(client_transport)
-    .await?;
-
-    tokio::time::timeout(std::time::Duration::from_secs(2), signal.notified()).await?;
-    assert_eq!(*payload.lock().await, Some(json!({ "ok": true })));
-    client.cancel().await?;
+        tokio::time::timeout(std::time::Duration::from_secs(2), signal.notified()).await?;
+        assert_eq!(*payload.lock().await, Some(json!({ "ok": true })));
+        client.cancel().await?;
+        anyhow::Ok(())
+    };
+    tokio::try_join!(server, client)?;
     Ok(())
 }

@@ -1,8 +1,11 @@
+#![cfg(not(feature = "local"))]
 use futures::StreamExt;
 use rmcp::{
     ClientHandler, Peer, RoleServer, ServerHandler, ServiceExt,
     handler::{client::progress::ProgressDispatcher, server::tool::ToolRouter},
-    model::{CallToolRequestParam, ClientRequest, Meta, ProgressNotificationParam, Request},
+    model::{
+        CallToolRequestParams, ClientRequest, ProgressNotificationParam, Request, RequestMetaObject,
+    },
     service::PeerRequestOptions,
     tool, tool_handler, tool_router,
 };
@@ -38,6 +41,7 @@ impl ClientHandler for MyClient {
 }
 
 pub struct MyServer {
+    #[expect(dead_code, reason = "tool_handler macro accesses this router field")]
     tool_router: ToolRouter<Self>,
 }
 
@@ -59,7 +63,7 @@ impl Default for MyServer {
 impl MyServer {
     #[tool]
     pub async fn some_progress(
-        meta: Meta,
+        meta: RequestMetaObject,
         client: Peer<RoleServer>,
     ) -> Result<(), rmcp::ErrorData> {
         let progress_token = meta
@@ -70,12 +74,11 @@ impl MyServer {
             ))?;
         for step in 0..10 {
             let _ = client
-                .notify_progress(ProgressNotificationParam {
-                    progress_token: progress_token.clone(),
-                    progress: (step as f64),
-                    total: Some(10.0),
-                    message: Some("Some message".into()),
-                })
+                .notify_progress(
+                    ProgressNotificationParam::new(progress_token.clone(), step as f64)
+                        .with_total(10.0)
+                        .with_message("Some message"),
+                )
                 .await;
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
@@ -107,11 +110,9 @@ async fn test_progress_subscriber() -> anyhow::Result<()> {
     let client_service = client.serve(transport_client).await?;
     let handle = client_service
         .send_cancellable_request(
-            ClientRequest::CallToolRequest(Request::new(CallToolRequestParam {
-                name: "some_progress".into(),
-                arguments: None,
-                task: None,
-            })),
+            ClientRequest::CallToolRequest(Request::new(CallToolRequestParams::new(
+                "some_progress",
+            ))),
             PeerRequestOptions::no_options(),
         )
         .await?;

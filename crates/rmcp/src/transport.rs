@@ -7,7 +7,7 @@
 //! | transport         | client                                                    | server                                                |
 //! |:-:                |:-:                                                        |:-:                                                    |
 //! | std IO            | [`child_process::TokioChildProcess`]                      | [`io::stdio`]                                         |
-//! | streamable http   | [`streamable_http_client::StreamableHttpClientTransport`] | [`streamable_http_server::StreamableHttpService`]     |
+//! | streamable http   | [`streamable_http_client::StreamableHttpClientTransport`] | `streamable_http_server::StreamableHttpService`     |
 //!
 //！## Helper Transport Types
 //! Thers are several helper transport types that can help you to create transport quickly.
@@ -40,10 +40,13 @@
 //!
 //! ```rust,ignore
 //! # use rmcp::{
-//! #     ServiceExt, serve_client, serve_server,
+//! #     ServiceExt, serve_server,
 //! # };
+//! #[cfg(feature = "client")]
+//! # use rmcp::serve_client;
 //!
 //! // create transport from tcp stream
+//! #[cfg(feature = "client")]
 //! async fn client() -> Result<(), Box<dyn std::error::Error>> {
 //!     let stream = tokio::net::TcpSocket::new_v4()?
 //!         .connect("127.0.0.1:8001".parse()?)
@@ -55,6 +58,7 @@
 //! }
 //!
 //! // create transport from std io
+//! #[cfg(feature = "client")]
 //! async fn io()  -> Result<(), Box<dyn std::error::Error>> {
 //!     let client = ().serve((tokio::io::stdin(), tokio::io::stdout())).await?;
 //!     let tools = client.peer().list_tools(Default::default()).await?;
@@ -70,28 +74,23 @@ use crate::service::{RxJsonRpcMessage, ServiceRole, TxJsonRpcMessage};
 pub mod sink_stream;
 
 #[cfg(feature = "transport-async-rw")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-async-rw")))]
 pub mod async_rw;
 
 #[cfg(feature = "transport-worker")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-worker")))]
 pub mod worker;
 #[cfg(feature = "transport-worker")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-worker")))]
 pub use worker::WorkerTransport;
 
 #[cfg(feature = "transport-child-process")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-child-process")))]
 pub mod child_process;
+#[cfg(feature = "which-command")]
+pub use child_process::which_command;
 #[cfg(feature = "transport-child-process")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-child-process")))]
 pub use child_process::{ConfigureCommandExt, TokioChildProcess};
 
 #[cfg(feature = "transport-io")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-io")))]
 pub mod io;
 #[cfg(feature = "transport-io")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-io")))]
 pub use io::stdio;
 
 #[cfg(feature = "transport-inproc")]
@@ -99,40 +98,35 @@ pub use io::stdio;
 pub mod inproc;
 
 #[cfg(feature = "auth")]
-#[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
 pub mod auth;
+#[cfg(feature = "auth-client-credentials-jwt")]
+pub use auth::JwtSigningAlgorithm;
 #[cfg(feature = "auth")]
-#[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
-pub use auth::{AuthError, AuthorizationManager, AuthorizationSession, AuthorizedHttpClient};
+pub use auth::{
+    AuthClient, AuthError, AuthorizationManager, AuthorizationRequest, AuthorizationSession,
+    AuthorizedHttpClient, ClientCredentialsConfig, CredentialStore,
+    EXTENSION_OAUTH_CLIENT_CREDENTIALS, InMemoryCredentialStore, InMemoryStateStore,
+    OAuthHttpClient, OAuthHttpClientError, OAuthHttpClientFuture, OAuthHttpRedirectPolicy,
+    OAuthHttpRequest, ScopeUpgradeConfig, StateStore, StoredAuthorizationState, StoredCredentials,
+    WWWAuthenticateParams,
+};
 
 // #[cfg(feature = "transport-ws")]
-// #[cfg_attr(docsrs, doc(cfg(feature = "transport-ws")))]
 // pub mod ws;
 #[cfg(feature = "transport-streamable-http-server-session")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-streamable-http-server-session")))]
 pub mod streamable_http_server;
-#[cfg(feature = "transport-streamable-http-server")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-streamable-http-server")))]
+#[cfg(all(feature = "transport-streamable-http-server", not(feature = "local")))]
 pub use streamable_http_server::tower::{StreamableHttpServerConfig, StreamableHttpService};
 
 #[cfg(feature = "transport-streamable-http-client")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-streamable-http-client")))]
 pub mod streamable_http_client;
+#[cfg(all(unix, feature = "transport-streamable-http-client-unix-socket"))]
+pub use common::unix_socket::UnixSocketHttpClient;
 #[cfg(feature = "transport-streamable-http-client")]
-#[cfg_attr(docsrs, doc(cfg(feature = "transport-streamable-http-client")))]
 pub use streamable_http_client::StreamableHttpClientTransport;
 
 /// Common use codes
 pub mod common;
-
-#[cfg(all(feature = "transport-worka", unix))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "transport-worka", unix))))]
-pub mod worka;
-
-#[cfg(all(feature = "transport-worka", not(unix)))]
-compile_error!(
-    "feature `transport-worka` is only supported on Unix targets because Worka transport uses Unix domain sockets"
-);
 
 pub trait Transport<R>: Send
 where
@@ -167,6 +161,7 @@ where
     fn into_transport(self) -> impl Transport<R, Error = E> + 'static;
 }
 
+#[non_exhaustive]
 pub enum TransportAdapterIdentity {}
 impl<R, T, E> IntoTransport<R, E, TransportAdapterIdentity> for T
 where
@@ -186,7 +181,7 @@ where
 {
     message: Option<RxJsonRpcMessage<R>>,
     sender: tokio::sync::mpsc::Sender<TxJsonRpcMessage<R>>,
-    finished_signal: Arc<tokio::sync::Notify>,
+    termination: Arc<tokio::sync::Semaphore>,
 }
 
 impl<R> OneshotTransport<R>
@@ -201,7 +196,7 @@ where
             Self {
                 message: Some(message),
                 sender,
-                finished_signal: Arc::new(tokio::sync::Notify::new()),
+                termination: Arc::new(tokio::sync::Semaphore::new(0)),
             },
             receiver,
         )
@@ -221,21 +216,22 @@ where
         let sender = self.sender.clone();
         let terminate = matches!(item, TxJsonRpcMessage::<R>::Response(_))
             || matches!(item, TxJsonRpcMessage::<R>::Error(_));
-        let signal = self.finished_signal.clone();
+        let termination = self.termination.clone();
         async move {
             sender.send(item).await?;
             if terminate {
-                signal.notify_waiters();
+                termination.add_permits(1);
             }
             Ok(())
         }
     }
 
     async fn receive(&mut self) -> Option<RxJsonRpcMessage<R>> {
-        if self.message.is_none() {
-            self.finished_signal.notified().await;
+        if let Some(msg) = self.message.take() {
+            return Some(msg);
         }
-        self.message.take()
+        let _ = self.termination.acquire().await;
+        None
     }
 
     fn close(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
@@ -246,6 +242,7 @@ where
 
 #[derive(Debug, thiserror::Error)]
 #[error("Transport [{transport_name}] error: {error}")]
+#[non_exhaustive]
 pub struct DynamicTransportError {
     pub transport_name: Cow<'static, str>,
     pub transport_type_id: std::any::TypeId,
@@ -261,6 +258,45 @@ impl DynamicTransportError {
             error: Box::new(e),
         }
     }
+
+    /// Create a `DynamicTransportError` from raw parts.
+    ///
+    /// Unlike [`new`](Self::new), this does not require a concrete [`Transport`] type,
+    /// making it usable in test fixtures and other contexts where a real transport
+    /// implementation is not available.
+    pub fn from_parts(
+        transport_name: impl Into<Cow<'static, str>>,
+        transport_type_id: std::any::TypeId,
+        error: Box<dyn std::error::Error + Send + Sync>,
+    ) -> Self {
+        Self {
+            transport_name: transport_name.into(),
+            transport_type_id,
+            error,
+        }
+    }
+
+    pub(crate) fn is_authorization_required(&self) -> bool {
+        let mut error = Some(self.error.as_ref() as &(dyn std::error::Error + 'static));
+        while let Some(current) = error {
+            #[cfg(feature = "auth")]
+            if matches!(
+                current.downcast_ref::<auth::AuthError>(),
+                Some(auth::AuthError::AuthorizationRequired)
+            ) {
+                return true;
+            }
+
+            #[cfg(feature = "transport-streamable-http-client")]
+            if current.is::<streamable_http_client::AuthRequiredError>() {
+                return true;
+            }
+
+            error = current.source();
+        }
+        false
+    }
+
     pub fn downcast<T: Transport<R> + 'static, R: ServiceRole>(self) -> Result<T::Error, Self> {
         if !self.is::<T, R>() {
             Err(self)

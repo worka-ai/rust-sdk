@@ -20,6 +20,9 @@ pub struct PromptAttribute {
     pub icons: Option<Expr>,
     /// Optional metadata for the prompt
     pub meta: Option<Expr>,
+    /// When true, the generated future will not require `Send`. Useful for `!Send` handlers
+    /// (e.g. single-threaded database connections). Also enabled globally by the `local` crate feature.
+    pub local: bool,
 }
 
 pub struct ResolvedPromptAttribute {
@@ -42,35 +45,27 @@ impl ResolvedPromptAttribute {
             meta,
         } = self;
         let description = if let Some(description) = description {
-            quote! { Some(#description.into()) }
+            quote! { Some::<String>(#description.into()) }
         } else {
-            quote! { None }
+            quote! { None::<String> }
         };
-        let title = if let Some(title) = title {
-            quote! { Some(#title.into()) }
-        } else {
-            quote! { None }
-        };
-        let icons = if let Some(icons) = icons {
-            quote! { Some(#icons) }
-        } else {
-            quote! { None }
-        };
-        let meta = if let Some(meta) = meta {
-            quote! { Some(#meta) }
-        } else {
-            quote! { None }
-        };
+        let title_call = title
+            .map(|t| quote! { .with_title(#t) })
+            .unwrap_or_default();
+        let icons_call = icons
+            .map(|i| quote! { .with_icons(#i) })
+            .unwrap_or_default();
+        let meta_call = meta.map(|m| quote! { .with_meta(#m) }).unwrap_or_default();
         let tokens = quote! {
             pub fn #fn_ident() -> rmcp::model::Prompt {
-                rmcp::model::Prompt {
-                    name: #name.into(),
-                    description: #description,
-                    arguments: #arguments,
-                    title: #title,
-                    icons: #icons,
-                    meta: #meta,
-                }
+                rmcp::model::Prompt::from_raw(
+                    #name,
+                    #description,
+                    #arguments,
+                )
+                #title_call
+                #icons_call
+                #meta_call
             }
         };
         syn::parse2::<ImplItemFn>(tokens)
@@ -86,6 +81,7 @@ pub fn prompt(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream>
     };
     let mut fn_item = syn::parse2::<ImplItemFn>(input.clone())?;
     let fn_ident = &fn_item.sig.ident;
+    let omit_send = cfg!(feature = "local") || attribute.local;
 
     let prompt_attr_fn_ident = format_ident!("{}_prompt_attr", fn_ident);
 
@@ -131,25 +127,34 @@ pub fn prompt(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream>
     // Modify the input function for async support (same as tool macro)
     if fn_item.sig.asyncness.is_some() {
         // 1. remove asyncness from sig
-        // 2. make return type: `futures::future::BoxFuture<'_, #ReturnType>`
+        // 2. make return type: `std::pin::Pin<Box<dyn std::future::Future<Output = #ReturnType> + Send + '_>>`
+        //    (omit `+ Send` when the `local` crate feature is active or `#[prompt(local)]` is used)
         // 3. make body: { Box::pin(async move { #body }) }
         let new_output = syn::parse2::<ReturnType>({
             let mut lt = quote! { 'static };
-            if let Some(receiver) = fn_item.sig.receiver() {
-                if let Some((_, receiver_lt)) = receiver.reference.as_ref() {
-                    if let Some(receiver_lt) = receiver_lt {
-                        lt = quote! { #receiver_lt };
-                    } else {
-                        lt = quote! { '_ };
-                    }
+            if let Some(receiver) = fn_item.sig.receiver()
+                && let syn::ReceiverKind::Reference(_, receiver_lt, _) = &receiver.kind
+            {
+                if let Some(receiver_lt) = receiver_lt {
+                    lt = quote! { #receiver_lt };
+                } else {
+                    lt = quote! { '_ };
                 }
             }
             match &fn_item.sig.output {
                 syn::ReturnType::Default => {
-                    quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ()> + Send + #lt>> }
+                    if omit_send {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ()> + #lt>> }
+                    } else {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ()> + Send + #lt>> }
+                    }
                 }
                 syn::ReturnType::Type(_, ty) => {
-                    quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = #ty> + Send + #lt>> }
+                    if omit_send {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = #ty> + #lt>> }
+                    } else {
+                        quote! { -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = #ty> + Send + #lt>> }
+                    }
                 }
             }
         })?;
@@ -232,6 +237,54 @@ mod test {
         let result_str = result.to_string();
         assert!(result_str.contains("include_str"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_async_prompt_default_send_behavior() -> syn::Result<()> {
+        let attr = quote! {};
+        let input = quote! {
+            async fn test_prompt_default_send(&self) -> String {
+                "ok".to_string()
+            }
+        };
+        let result = prompt(attr, input)?;
+
+        let result_str = result.to_string();
+        if cfg!(feature = "local") {
+            assert!(!result_str.contains("+ Send +"));
+        } else {
+            assert!(result_str.contains("+ Send +"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_async_prompt_preserves_receiver_lifetime() -> syn::Result<()> {
+        let attr = quote! {};
+        let input = quote! {
+            async fn test_prompt_with_lifetime<'a>(&'a self) -> String {
+                "ok".to_string()
+            }
+        };
+        let result = prompt(attr, input)?;
+
+        assert!(result.to_string().contains("+ 'a"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_async_prompt_local_omits_send() -> syn::Result<()> {
+        let attr = quote! { local };
+        let input = quote! {
+            async fn test_prompt_local_no_send(&self) -> String {
+                "ok".to_string()
+            }
+        };
+        let result = prompt(attr, input)?;
+
+        let result_str = result.to_string();
+        assert!(!result_str.contains("+ Send +"));
         Ok(())
     }
 }

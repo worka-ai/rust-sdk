@@ -37,109 +37,8 @@
     }
   ],
   "definitions": {
-    "Annotated": {
-      "type": "object",
-      "properties": {
-        "annotations": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Annotations"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "text"
-            }
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/RawTextContent"
-            }
-          ],
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "image"
-            }
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/RawImageContent"
-            }
-          ],
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "resource"
-            }
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/RawEmbeddedResource"
-            }
-          ],
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "audio"
-            }
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/RawAudioContent"
-            }
-          ],
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "resource_link"
-            }
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/RawResource"
-            }
-          ],
-          "required": [
-            "type"
-          ]
-        }
-      ]
-    },
     "Annotations": {
+      "description": "Optional annotations for the client. The client can use annotations to inform how objects are\nused or displayed.",
       "type": "object",
       "properties": {
         "audience": {
@@ -155,8 +54,7 @@
           "type": [
             "string",
             "null"
-          ],
-          "format": "date-time"
+          ]
         },
         "priority": {
           "type": [
@@ -182,17 +80,76 @@
         "value"
       ]
     },
+    "AudioContent": {
+      "description": "Audio content with base64-encoded data (spec `AudioContent`).",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "description": "Optional protocol-level metadata for this content block.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "annotations": {
+          "description": "Optional annotations describing how the client should use this content.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Annotations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "description": "The base64-encoded audio data.",
+          "type": "string"
+        },
+        "mimeType": {
+          "description": "The MIME type of the audio (e.g. `audio/wav`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "mimeType"
+      ]
+    },
     "CallToolRequestMethod": {
       "type": "string",
       "format": "const",
       "const": "tools/call"
     },
-    "CallToolRequestParam": {
+    "CallToolRequestParams": {
       "description": "Parameters for calling a tool provided by an MCP server.\n\nContains the tool name and optional arguments needed to execute\nthe tool operation.",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "arguments": {
           "description": "Arguments to pass to the tool (must match the tool's input schema)",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "inputResponses": {
+          "description": "Client responses to server-initiated input requests from a previous\n[`InputRequiredResult`]. Present only when retrying after an incomplete result.",
           "type": [
             "object",
             "null"
@@ -203,12 +160,12 @@
           "description": "The name of the tool to call",
           "type": "string"
         },
-        "task": {
+        "requestState": {
+          "description": "Opaque request state echoed back from a previous [`InputRequiredResult`].\nClients MUST return this value exactly as received.",
           "type": [
-            "object",
+            "string",
             "null"
-          ],
-          "additionalProperties": true
+          ]
         }
       },
       "required": [
@@ -220,9 +177,20 @@
       "format": "const",
       "const": "tasks/cancel"
     },
-    "CancelTaskParam": {
+    "CancelTaskParams": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "taskId": {
           "type": "string"
         }
@@ -239,6 +207,16 @@
     "CancelledNotificationParam": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NotificationMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "reason": {
           "type": [
             "string",
@@ -246,16 +224,20 @@
           ]
         },
         "requestId": {
-          "$ref": "#/definitions/NumberOrString"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NumberOrString"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
-      },
-      "required": [
-        "requestId"
-      ]
+      }
     },
     "ClientCapabilities": {
       "title": "Builder",
-      "description": "```rust\n# use rmcp::model::ClientCapabilities;\nlet cap = ClientCapabilities::builder()\n    .enable_experimental()\n    .enable_roots()\n    .enable_roots_list_changed()\n    .build();\n```",
+      "description": "```rust\n# use rmcp::model::ClientCapabilities;\nlet cap = ClientCapabilities::builder()\n    .enable_experimental()\n    .build();\n```",
       "type": "object",
       "properties": {
         "elicitation": {
@@ -279,7 +261,19 @@
             "additionalProperties": true
           }
         },
+        "extensions": {
+          "description": "Optional MCP extensions that the client supports (SEP-1724).\nKeys are extension identifiers (e.g., `\"io.modelcontextprotocol/ui\"`),\nvalues are per-extension settings objects. An empty object indicates\nsupport with no settings.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
         "roots": {
+          "description": "Capability for filesystem roots (deprecated by SEP-2577).",
           "anyOf": [
             {
               "$ref": "#/definitions/RootsCapabilities"
@@ -290,16 +284,10 @@
           ]
         },
         "sampling": {
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
-        },
-        "tasks": {
+          "description": "Capability for LLM sampling requests (SEP-1577, deprecated by SEP-2577).",
           "anyOf": [
             {
-              "$ref": "#/definitions/TasksCapability"
+              "$ref": "#/definitions/SamplingCapability"
             },
             {
               "type": "null"
@@ -317,7 +305,7 @@
           "$ref": "#/definitions/ListRootsResult"
         },
         {
-          "$ref": "#/definitions/CreateElicitationResult"
+          "$ref": "#/definitions/ElicitResult"
         },
         {
           "$ref": "#/definitions/EmptyObject"
@@ -332,9 +320,20 @@
       "format": "const",
       "const": "completion/complete"
     },
-    "CompleteRequestParam": {
+    "CompleteRequestParams": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "argument": {
           "$ref": "#/definitions/ArgumentInfo"
         },
@@ -374,35 +373,115 @@
         }
       }
     },
-    "CreateElicitationResult": {
-      "description": "The result returned by a client in response to an elicitation request.\n\nContains the user's decision (accept/decline/cancel) and optionally their input data\nif they chose to accept the request.",
-      "type": "object",
-      "properties": {
-        "action": {
-          "description": "The user's decision on how to handle the elicitation request",
+    "ContentBlock": {
+      "description": "Unified content block union (spec `ContentBlock`).\n\n`text | image | audio | resource_link | resource`",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            }
+          },
           "allOf": [
             {
-              "$ref": "#/definitions/ElicitationAction"
+              "$ref": "#/definitions/TextContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "image"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ImageContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "audio"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/AudioContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "resource"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/EmbeddedResource"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "resource_link"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Resource"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "CreateMessageResult": {
+      "description": "Result of sampling/createMessage (SEP-1577).\nThe result of a sampling/createMessage request containing the generated response.\n\nThis structure contains the generated message along with metadata about\nhow the generation was performed and why it stopped.",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
             }
           ]
         },
         "content": {
-          "description": "The actual data provided by the user, if they accepted the request.\nMust conform to the JSON schema specified in the original request.\nOnly present when action is Accept."
-        }
-      },
-      "required": [
-        "action"
-      ]
-    },
-    "CreateMessageResult": {
-      "description": "The result of a sampling/createMessage request containing the generated response.\n\nThis structure contains the generated message along with metadata about\nhow the generation was performed and why it stopped.",
-      "type": "object",
-      "properties": {
-        "content": {
-          "description": "The actual content of the message (text, image, etc.)",
+          "description": "The actual content of the message (text, image, audio, tool use, or tool result)",
           "allOf": [
             {
-              "$ref": "#/definitions/Annotated"
+              "$ref": "#/definitions/SamplingContent"
             }
           ]
         },
@@ -426,6 +505,7 @@
           ]
         }
       },
+      "deprecated": true,
       "required": [
         "model",
         "role",
@@ -461,6 +541,53 @@
     "CustomResult": {
       "description": "A catch-all response either side can use for custom requests."
     },
+    "DiscoverRequestMethod": {
+      "type": "string",
+      "format": "const",
+      "const": "server/discover"
+    },
+    "DiscoverRequestParams": {
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "$ref": "#/definitions/RequestMetaObject"
+        }
+      },
+      "required": [
+        "_meta"
+      ]
+    },
+    "ElicitResult": {
+      "description": "The result returned by a client in response to an elicitation request.\n\nContains the user's decision (accept/decline/cancel) and optionally their input data\nif they chose to accept the request.",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "description": "Optional protocol-level metadata for this result.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "description": "The user's decision on how to handle the elicitation request",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ElicitationAction"
+            }
+          ]
+        },
+        "content": {
+          "description": "The actual data provided by the user, if they accepted the request.\nMust conform to the JSON schema specified in the original request.\nOnly present when action is Accept."
+        }
+      },
+      "required": [
+        "action"
+      ]
+    },
     "ElicitationAction": {
       "description": "Represents the possible actions a user can take in response to an elicitation request.\n\nWhen a server requests user input through elicitation, the user can:\n- Accept: Provide the requested information and continue\n- Decline: Refuse to provide the information but continue the operation\n- Cancel: Stop the entire operation",
       "oneOf": [
@@ -482,17 +609,71 @@
       ]
     },
     "ElicitationCapability": {
-      "description": "Capability for handling elicitation requests from servers.\n\nElicitation allows servers to request interactive input from users during tool execution.\nThis capability indicates that a client can handle elicitation requests and present\nappropriate UI to users for collecting the requested information.",
+      "description": "Elicitation allows servers to request interactive input from users during tool execution.\nThis capability indicates that a client can handle elicitation requests and present\nappropriate UI to users for collecting the requested information.",
       "type": "object",
       "properties": {
-        "schemaValidation": {
-          "description": "Whether the client supports JSON Schema validation for elicitation responses.\nWhen true, the client will validate user input against the requested_schema\nbefore sending the response back to the server.",
-          "type": [
-            "boolean",
-            "null"
+        "form": {
+          "description": "Whether client supports form-based elicitation.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FormElicitationCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "description": "Whether client supports URL-based elicitation.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UrlElicitationCapability"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       }
+    },
+    "EmbeddedResource": {
+      "description": "Embedded resource content (spec `EmbeddedResource`).",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "description": "Optional protocol-level metadata for this content block.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "annotations": {
+          "description": "Optional annotations describing how the client should use this content.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Annotations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource": {
+          "description": "The embedded resource contents (text or blob).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ResourceContents"
+            }
+          ]
+        }
+      },
+      "required": [
+        "resource"
+      ]
     },
     "EmptyObject": {
       "description": "This is commonly used for representing empty objects in MCP messages.\n\nwithout returning any specific data.",
@@ -529,16 +710,48 @@
         "message"
       ]
     },
+    "FormElicitationCapability": {
+      "description": "Capability for handling elicitation requests from servers.\nElicitation allows servers to request interactive input from users during tool execution.\nThis capability indicates that a client can handle elicitation requests and present\nappropriate UI to users for collecting the requested information.\n\nCapability for form mode elicitation.",
+      "type": "object",
+      "properties": {
+        "schemaValidation": {
+          "description": "Whether the client supports JSON Schema validation for elicitation responses.\nWhen true, the client will validate user input against the requested_schema\nbefore sending the response back to the server.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
     "GetPromptRequestMethod": {
       "type": "string",
       "format": "const",
       "const": "prompts/get"
     },
-    "GetPromptRequestParam": {
+    "GetPromptRequestParams": {
       "description": "Parameters for retrieving a specific prompt",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "arguments": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "inputResponses": {
+          "description": "Client responses to server-initiated input requests from a previous\n[`InputRequiredResult`].",
           "type": [
             "object",
             "null"
@@ -547,37 +760,39 @@
         },
         "name": {
           "type": "string"
+        },
+        "requestState": {
+          "description": "Opaque request state echoed back from a previous [`InputRequiredResult`].",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "name"
       ]
     },
-    "GetTaskInfoMethod": {
+    "GetTaskMethod": {
       "type": "string",
       "format": "const",
       "const": "tasks/get"
     },
-    "GetTaskInfoParam": {
+    "GetTaskParams": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "taskId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "taskId"
-      ]
-    },
-    "GetTaskResultMethod": {
-      "type": "string",
-      "format": "const",
-      "const": "tasks/result"
-    },
-    "GetTaskResultParam": {
-      "type": "object",
-      "properties": {
-        "taskId": {
+          "description": "Identifier of the task to query.",
           "type": "string"
         }
       },
@@ -609,15 +824,87 @@
         "src": {
           "description": "A standard URI pointing to an icon resource",
           "type": "string"
+        },
+        "theme": {
+          "description": "Optional specifier for the theme this icon is designed for\nIf not provided, the client should assume the icon can be used with any theme.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/IconTheme"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "src"
       ]
     },
+    "IconTheme": {
+      "description": "Icon themes supported by the MCP specification",
+      "oneOf": [
+        {
+          "description": "Indicates the icon is designed to be used with a light background",
+          "type": "string",
+          "const": "light"
+        },
+        {
+          "description": "Indicates the icon is designed to be used with a dark background",
+          "type": "string",
+          "const": "dark"
+        }
+      ]
+    },
+    "ImageContent": {
+      "description": "Image content with base64-encoded data (spec `ImageContent`).",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "description": "Optional protocol-level metadata for this content block.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "annotations": {
+          "description": "Optional annotations describing how the client should use this content.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Annotations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "description": "The base64-encoded image data.",
+          "type": "string"
+        },
+        "mimeType": {
+          "description": "The MIME type of the image (e.g. `image/png`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "mimeType"
+      ]
+    },
     "Implementation": {
       "type": "object",
       "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "icons": {
           "type": [
             "array",
@@ -651,10 +938,21 @@
         "version"
       ]
     },
-    "InitializeRequestParam": {
+    "InitializeRequestParams": {
       "description": "Parameters sent by a client when initializing a connection to an MCP server.\n\nThis contains the client's protocol version, capabilities, and implementation\ninformation, allowing the server to understand what the client supports.",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "capabilities": {
           "description": "The capabilities this client supports (sampling, roots, etc.)",
           "allOf": [
@@ -703,7 +1001,14 @@
           "$ref": "#/definitions/ErrorData"
         },
         "id": {
-          "$ref": "#/definitions/NumberOrString"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NumberOrString"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "jsonrpc": {
           "$ref": "#/definitions/JsonRpcVersion2_0"
@@ -711,7 +1016,6 @@
       },
       "required": [
         "jsonrpc",
-        "id",
         "error"
       ]
     },
@@ -770,6 +1074,9 @@
           "$ref": "#/definitions/Request4"
         },
         {
+          "$ref": "#/definitions/Request5"
+        },
+        {
           "$ref": "#/definitions/RequestOptionalParam"
         },
         {
@@ -777,9 +1084,6 @@
         },
         {
           "$ref": "#/definitions/RequestOptionalParam3"
-        },
-        {
-          "$ref": "#/definitions/Request5"
         },
         {
           "$ref": "#/definitions/Request6"
@@ -791,22 +1095,25 @@
           "$ref": "#/definitions/Request8"
         },
         {
-          "$ref": "#/definitions/RequestOptionalParam4"
-        },
-        {
-          "$ref": "#/definitions/CustomRequest"
-        },
-        {
           "$ref": "#/definitions/Request9"
-        },
-        {
-          "$ref": "#/definitions/RequestOptionalParam5"
         },
         {
           "$ref": "#/definitions/Request10"
         },
         {
+          "$ref": "#/definitions/RequestOptionalParam4"
+        },
+        {
           "$ref": "#/definitions/Request11"
+        },
+        {
+          "$ref": "#/definitions/Request12"
+        },
+        {
+          "$ref": "#/definitions/Request13"
+        },
+        {
+          "$ref": "#/definitions/CustomRequest"
         }
       ],
       "required": [
@@ -856,6 +1163,16 @@
     "ListRootsResult": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "roots": {
           "type": "array",
           "items": {
@@ -863,14 +1180,10 @@
           }
         }
       },
+      "deprecated": true,
       "required": [
         "roots"
       ]
-    },
-    "ListTasksMethod": {
-      "type": "string",
-      "format": "const",
-      "const": "tasks/list"
     },
     "ListToolsRequestMethod": {
       "type": "string",
@@ -880,6 +1193,7 @@
     "LoggingLevel": {
       "description": "Logging levels supported by the MCP protocol",
       "type": "string",
+      "deprecated": true,
       "enum": [
         "debug",
         "info",
@@ -890,6 +1204,11 @@
         "alert",
         "emergency"
       ]
+    },
+    "MetaObject": {
+      "description": "See [MCP general fields](https://modelcontextprotocol.io/specification/2026-07-28/basic#general-fields) for notes on _meta usage.",
+      "type": "object",
+      "additionalProperties": true
     },
     "Notification": {
       "type": "object",
@@ -920,6 +1239,16 @@
         "method",
         "params"
       ]
+    },
+    "NotificationMetaObject": {
+      "description": "Metadata reserved by MCP on notifications. Extension keys are also allowed.",
+      "type": "object",
+      "properties": {
+        "io.modelcontextprotocol/subscriptionId": {
+          "$ref": "#/definitions/NumberOrString"
+        }
+      },
+      "additionalProperties": true
     },
     "NotificationNoParam": {
       "type": "object",
@@ -953,9 +1282,20 @@
         }
       ]
     },
-    "PaginatedRequestParam": {
+    "PaginatedRequestParams": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "cursor": {
           "type": [
             "string",
@@ -977,6 +1317,16 @@
     "ProgressNotificationParam": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NotificationMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "message": {
           "description": "An optional message describing the current progress.",
           "type": [
@@ -1035,158 +1385,41 @@
       "description": "Represents the MCP protocol version used for communication.\n\nThis ensures compatibility between clients and servers by specifying\nwhich version of the Model Context Protocol is being used.",
       "type": "string"
     },
-    "RawAudioContent": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "string"
-        },
-        "mimeType": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "data",
-        "mimeType"
-      ]
-    },
-    "RawEmbeddedResource": {
-      "type": "object",
-      "properties": {
-        "_meta": {
-          "description": "Optional protocol-level metadata for this content block",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
-        },
-        "resource": {
-          "$ref": "#/definitions/ResourceContents"
-        }
-      },
-      "required": [
-        "resource"
-      ]
-    },
-    "RawImageContent": {
-      "type": "object",
-      "properties": {
-        "_meta": {
-          "description": "Optional protocol-level metadata for this content block",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
-        },
-        "data": {
-          "description": "The base64-encoded image",
-          "type": "string"
-        },
-        "mimeType": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "data",
-        "mimeType"
-      ]
-    },
-    "RawResource": {
-      "description": "Represents a resource in the extension with metadata",
-      "type": "object",
-      "properties": {
-        "_meta": {
-          "description": "Optional additional metadata for this resource",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
-        },
-        "description": {
-          "description": "Optional description of the resource",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "icons": {
-          "description": "Optional list of icons for the resource",
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": {
-            "$ref": "#/definitions/Icon"
-          }
-        },
-        "mimeType": {
-          "description": "MIME type of the resource content (\"text\" or \"blob\")",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Name of the resource",
-          "type": "string"
-        },
-        "size": {
-          "description": "The size of the raw resource content, in bytes (i.e., before base64 encoding or any tokenization), if known.\n\nThis can be used by Hosts to display file sizes and estimate context window us",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0
-        },
-        "title": {
-          "description": "Human-readable title of the resource",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "uri": {
-          "description": "URI representing the resource location (e.g., \"file:///path/to/file\" or \"str:///content\")",
-          "type": "string"
-        }
-      },
-      "required": [
-        "uri",
-        "name"
-      ]
-    },
-    "RawTextContent": {
-      "type": "object",
-      "properties": {
-        "_meta": {
-          "description": "Optional protocol-level metadata for this content block",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "text"
-      ]
-    },
     "ReadResourceRequestMethod": {
       "type": "string",
       "format": "const",
       "const": "resources/read"
     },
-    "ReadResourceRequestParam": {
+    "ReadResourceRequestParams": {
       "description": "Parameters for reading a specific resource",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputResponses": {
+          "description": "Client responses to server-initiated input requests from a previous\n[`InputRequiredResult`].",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "requestState": {
+          "description": "Opaque request state echoed back from a previous [`InputRequiredResult`].",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "uri": {
           "description": "The URI of the resource to read",
           "type": "string"
@@ -1208,7 +1441,7 @@
           },
           "allOf": [
             {
-              "$ref": "#/definitions/ResourceReference"
+              "$ref": "#/definitions/ResourceTemplateReference"
             }
           ],
           "required": [
@@ -1242,7 +1475,7 @@
           "$ref": "#/definitions/InitializeResultMethod"
         },
         "params": {
-          "$ref": "#/definitions/InitializeRequestParam"
+          "$ref": "#/definitions/InitializeRequestParams"
         }
       },
       "required": [
@@ -1255,10 +1488,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/GetTaskResultMethod"
+          "$ref": "#/definitions/CallToolRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/GetTaskResultParam"
+          "$ref": "#/definitions/CallToolRequestParams"
         }
       },
       "required": [
@@ -1271,10 +1504,42 @@
       "type": "object",
       "properties": {
         "method": {
+          "$ref": "#/definitions/GetTaskMethod"
+        },
+        "params": {
+          "$ref": "#/definitions/GetTaskParams"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ]
+    },
+    "Request12": {
+      "description": "Represents a JSON-RPC request with method, parameters, and extensions.\n\nThis is the core structure for all MCP requests, containing:\n- `method`: The name of the method being called\n- `params`: The parameters for the method\n- `extensions`: Additional context data (similar to HTTP headers)",
+      "type": "object",
+      "properties": {
+        "method": {
+          "$ref": "#/definitions/UpdateTaskMethod"
+        },
+        "params": {
+          "$ref": "#/definitions/UpdateTaskParams"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ]
+    },
+    "Request13": {
+      "description": "Represents a JSON-RPC request with method, parameters, and extensions.\n\nThis is the core structure for all MCP requests, containing:\n- `method`: The name of the method being called\n- `params`: The parameters for the method\n- `extensions`: Additional context data (similar to HTTP headers)",
+      "type": "object",
+      "properties": {
+        "method": {
           "$ref": "#/definitions/CancelTaskMethod"
         },
         "params": {
-          "$ref": "#/definitions/CancelTaskParam"
+          "$ref": "#/definitions/CancelTaskParams"
         }
       },
       "required": [
@@ -1287,10 +1552,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/CompleteRequestMethod"
+          "$ref": "#/definitions/DiscoverRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/CompleteRequestParam"
+          "$ref": "#/definitions/DiscoverRequestParams"
         }
       },
       "required": [
@@ -1303,10 +1568,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/SetLevelRequestMethod"
+          "$ref": "#/definitions/CompleteRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/SetLevelRequestParam"
+          "$ref": "#/definitions/CompleteRequestParams"
         }
       },
       "required": [
@@ -1319,10 +1584,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/GetPromptRequestMethod"
+          "$ref": "#/definitions/SetLevelRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/GetPromptRequestParam"
+          "$ref": "#/definitions/SetLevelRequestParams"
         }
       },
       "required": [
@@ -1335,10 +1600,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/ReadResourceRequestMethod"
+          "$ref": "#/definitions/GetPromptRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/ReadResourceRequestParam"
+          "$ref": "#/definitions/GetPromptRequestParams"
         }
       },
       "required": [
@@ -1351,10 +1616,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/SubscribeRequestMethod"
+          "$ref": "#/definitions/ReadResourceRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/SubscribeRequestParam"
+          "$ref": "#/definitions/ReadResourceRequestParams"
         }
       },
       "required": [
@@ -1367,10 +1632,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/UnsubscribeRequestMethod"
+          "$ref": "#/definitions/SubscriptionsListenRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/UnsubscribeRequestParam"
+          "$ref": "#/definitions/SubscriptionsListenRequestParams"
         }
       },
       "required": [
@@ -1383,10 +1648,10 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/CallToolRequestMethod"
+          "$ref": "#/definitions/SubscribeRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/CallToolRequestParam"
+          "$ref": "#/definitions/SubscribeRequestParams"
         }
       },
       "required": [
@@ -1399,16 +1664,38 @@
       "type": "object",
       "properties": {
         "method": {
-          "$ref": "#/definitions/GetTaskInfoMethod"
+          "$ref": "#/definitions/UnsubscribeRequestMethod"
         },
         "params": {
-          "$ref": "#/definitions/GetTaskInfoParam"
+          "$ref": "#/definitions/UnsubscribeRequestParams"
         }
       },
       "required": [
         "method",
         "params"
       ]
+    },
+    "RequestMetaObject": {
+      "description": "Metadata reserved by MCP on requests. Extension keys are also allowed.",
+      "type": "object",
+      "properties": {
+        "io.modelcontextprotocol/clientCapabilities": {
+          "$ref": "#/definitions/ClientCapabilities"
+        },
+        "io.modelcontextprotocol/clientInfo": {
+          "$ref": "#/definitions/Implementation"
+        },
+        "io.modelcontextprotocol/logLevel": {
+          "$ref": "#/definitions/LoggingLevel"
+        },
+        "io.modelcontextprotocol/protocolVersion": {
+          "type": "string"
+        },
+        "progressToken": {
+          "$ref": "#/definitions/ProgressToken"
+        }
+      },
+      "additionalProperties": true
     },
     "RequestNoParam": {
       "type": "object",
@@ -1430,7 +1717,7 @@
         "params": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PaginatedRequestParam"
+              "$ref": "#/definitions/PaginatedRequestParams"
             },
             {
               "type": "null"
@@ -1451,7 +1738,7 @@
         "params": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PaginatedRequestParam"
+              "$ref": "#/definitions/PaginatedRequestParams"
             },
             {
               "type": "null"
@@ -1472,7 +1759,7 @@
         "params": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PaginatedRequestParam"
+              "$ref": "#/definitions/PaginatedRequestParams"
             },
             {
               "type": "null"
@@ -1493,7 +1780,7 @@
         "params": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PaginatedRequestParam"
+              "$ref": "#/definitions/PaginatedRequestParams"
             },
             {
               "type": "null"
@@ -1505,38 +1792,101 @@
         "method"
       ]
     },
-    "RequestOptionalParam5": {
+    "Resource": {
+      "description": "A known resource that the server is capable of reading (spec `Resource`).\n\nAlso used as the inner type of `ContentBlock::ResourceLink` (spec `ResourceLink extends Resource`).",
       "type": "object",
       "properties": {
-        "method": {
-          "$ref": "#/definitions/ListTasksMethod"
-        },
-        "params": {
+        "_meta": {
+          "description": "Optional protocol-level metadata for this resource.",
           "anyOf": [
             {
-              "$ref": "#/definitions/PaginatedRequestParam"
+              "$ref": "#/definitions/MetaObject"
             },
             {
               "type": "null"
             }
           ]
+        },
+        "annotations": {
+          "description": "Optional annotations describing how the client should use this resource.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Annotations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "description": "Optional description of what this resource represents.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icons": {
+          "description": "Optional set of icons the client may display for this resource.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Icon"
+          }
+        },
+        "mimeType": {
+          "description": "The MIME type of this resource, if known.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The programmatic name of the resource.",
+          "type": "string"
+        },
+        "size": {
+          "description": "The size of the raw resource content in bytes (before base64/tokenization), if known.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "title": {
+          "description": "Optional human-readable display title.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uri": {
+          "description": "The URI of this resource (e.g. `file:///path/to/file`).",
+          "type": "string"
         }
       },
       "required": [
-        "method"
+        "uri",
+        "name"
       ]
     },
     "ResourceContents": {
+      "description": "The contents of a specific resource or sub-resource.",
       "anyOf": [
         {
           "type": "object",
           "properties": {
             "_meta": {
-              "type": [
-                "object",
-                "null"
-              ],
-              "additionalProperties": true
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/MetaObject"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "mimeType": {
               "type": [
@@ -1560,11 +1910,14 @@
           "type": "object",
           "properties": {
             "_meta": {
-              "type": [
-                "object",
-                "null"
-              ],
-              "additionalProperties": true
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/MetaObject"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "blob": {
               "type": "string"
@@ -1586,7 +1939,7 @@
         }
       ]
     },
-    "ResourceReference": {
+    "ResourceTemplateReference": {
       "type": "object",
       "properties": {
         "uri": {
@@ -1615,6 +1968,16 @@
     "Root": {
       "type": "object",
       "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "name": {
           "type": [
             "string",
@@ -1625,11 +1988,13 @@
           "type": "string"
         }
       },
+      "deprecated": true,
       "required": [
         "uri"
       ]
     },
     "RootsCapabilities": {
+      "description": "Roots capability. Deprecated by SEP-2577; remains functional and will be\nremoved in a future release.\nSee <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577>.",
       "type": "object",
       "properties": {
         "listChanged": {
@@ -1645,15 +2010,155 @@
       "format": "const",
       "const": "notifications/roots/list_changed"
     },
+    "SamplingCapability": {
+      "description": "Sampling capability with optional sub-capabilities (SEP-1577).\n\nDeprecated by SEP-2577; remains functional and will be removed in a future\nrelease.\nSee <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577>.",
+      "type": "object",
+      "properties": {
+        "context": {
+          "description": "Support for `includeContext` (soft-deprecated)",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "tools": {
+          "description": "Support for `tools` and `toolChoice` parameters",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    "SamplingContent": {
+      "description": "Single or array content wrapper (SEP-1577).",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SamplingMessageContentBlock"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SamplingMessageContentBlock"
+          }
+        }
+      ]
+    },
+    "SamplingMessageContentBlock": {
+      "description": "Content types for sampling messages (SEP-1577).",
+      "deprecated": true,
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/TextContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "image"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ImageContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "audio"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/AudioContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Assistant only",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool_use"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ToolUseContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "User only",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool_result"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ToolResultContent"
+            }
+          ],
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
     "SetLevelRequestMethod": {
       "type": "string",
       "format": "const",
       "const": "logging/setLevel"
     },
-    "SetLevelRequestParam": {
+    "SetLevelRequestParams": {
       "description": "Parameters for setting the logging level",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "level": {
           "description": "The desired logging level",
           "allOf": [
@@ -1663,6 +2168,7 @@
           ]
         }
       },
+      "deprecated": true,
       "required": [
         "level"
       ]
@@ -1672,10 +2178,21 @@
       "format": "const",
       "const": "resources/subscribe"
     },
-    "SubscribeRequestParam": {
+    "SubscribeRequestParams": {
       "description": "Parameters for subscribing to resource updates",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "uri": {
           "description": "The URI of the resource to subscribe to",
           "type": "string"
@@ -1685,45 +2202,200 @@
         "uri"
       ]
     },
-    "TasksCapability": {
-      "description": "Task capability negotiation for SEP-1686.",
+    "SubscriptionFilter": {
+      "description": "Notification categories a client opts in to on a `subscriptions/listen` stream.",
       "type": "object",
       "properties": {
-        "cancel": {
-          "description": "Whether the receiver supports `tasks/cancel`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+        "promptsListChanged": {
+          "type": "boolean"
         },
-        "list": {
-          "description": "Whether the receiver supports `tasks/list`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "requests": {
-          "description": "Map of request category (e.g. \"tools.call\") to a boolean indicating support.",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {
-            "type": "boolean"
+        "resourceSubscriptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
+        },
+        "resourcesListChanged": {
+          "type": "boolean"
+        },
+        "toolsListChanged": {
+          "type": "boolean"
         }
       }
+    },
+    "SubscriptionsListenRequestMethod": {
+      "type": "string",
+      "format": "const",
+      "const": "subscriptions/listen"
+    },
+    "SubscriptionsListenRequestParams": {
+      "description": "Parameters for opening a long-lived notification subscription.",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata. Required by the 2026-07-28 wire schema.",
+          "type": "object",
+          "properties": {
+            "io.modelcontextprotocol/clientCapabilities": {
+              "$ref": "#/definitions/ClientCapabilities"
+            },
+            "io.modelcontextprotocol/clientInfo": {
+              "$ref": "#/definitions/Implementation"
+            },
+            "io.modelcontextprotocol/logLevel": {
+              "$ref": "#/definitions/LoggingLevel"
+            },
+            "io.modelcontextprotocol/protocolVersion": {
+              "type": "string"
+            },
+            "progressToken": {
+              "$ref": "#/definitions/ProgressToken"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "io.modelcontextprotocol/protocolVersion",
+            "io.modelcontextprotocol/clientCapabilities"
+          ]
+        },
+        "notifications": {
+          "description": "Notification categories requested for this stream.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SubscriptionFilter"
+            }
+          ]
+        }
+      },
+      "required": [
+        "_meta",
+        "notifications"
+      ]
+    },
+    "TextContent": {
+      "description": "Text content block (spec `TextContent`).",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "description": "Optional protocol-level metadata for this content block.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "annotations": {
+          "description": "Optional annotations describing how the client should use this content.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Annotations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "description": "The text content of the message.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "ToolResultContent": {
+      "description": "Tool execution result in user message (SEP-1577).",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContentBlock"
+          }
+        },
+        "isError": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "structuredContent": true,
+        "toolUseId": {
+          "type": "string"
+        }
+      },
+      "deprecated": true,
+      "required": [
+        "toolUseId",
+        "content"
+      ]
+    },
+    "ToolUseContent": {
+      "description": "Tool call request from assistant (SEP-1577).",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "deprecated": true,
+      "required": [
+        "id",
+        "name",
+        "input"
+      ]
     },
     "UnsubscribeRequestMethod": {
       "type": "string",
       "format": "const",
       "const": "resources/unsubscribe"
     },
-    "UnsubscribeRequestParam": {
+    "UnsubscribeRequestParams": {
       "description": "Parameters for unsubscribing from resource updates",
       "type": "object",
       "properties": {
+        "_meta": {
+          "description": "Protocol-level metadata for this request (SEP-1319)",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "uri": {
           "description": "The URI of the resource to unsubscribe from",
           "type": "string"
@@ -1732,6 +2404,44 @@
       "required": [
         "uri"
       ]
+    },
+    "UpdateTaskMethod": {
+      "type": "string",
+      "format": "const",
+      "const": "tasks/update"
+    },
+    "UpdateTaskParams": {
+      "description": "Parameters for `tasks/update` (SEP-2663): deliver responses to outstanding\nin-task server-to-client requests surfaced via `tasks/get` `inputRequests`.",
+      "type": "object",
+      "properties": {
+        "_meta": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestMetaObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputResponses": {
+          "description": "Responses to outstanding `inputRequests` previously surfaced by the\nserver. Each key MUST correspond to a currently-outstanding\n`inputRequests` key.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "taskId": {
+          "description": "Identifier of the task to update.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId",
+        "inputResponses"
+      ]
+    },
+    "UrlElicitationCapability": {
+      "description": "Capability for URL mode elicitation.",
+      "type": "object"
     }
   }
 }

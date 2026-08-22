@@ -7,6 +7,536 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.4](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.1.3...rmcp-v3.1.4) - 2026-08-18
+
+### Fixed
+
+- *(rmcp)* preserve elicitation requestedSchema $schema dialect ([#1176](https://github.com/modelcontextprotocol/rust-sdk/pull/1176))
+- harden signing key handling ([#1166](https://github.com/modelcontextprotocol/rust-sdk/pull/1166))
+- report pre-init metadata errors ([#1160](https://github.com/modelcontextprotocol/rust-sdk/pull/1160))
+
+## [3.1.3](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.1.2...rmcp-v3.1.3) - 2026-08-17
+
+### Fixed
+
+- *(auth)* ignore query parameters when matching resources ([#1177](https://github.com/modelcontextprotocol/rust-sdk/pull/1177))
+- *(auth)* retain state until issuer validation ([#1167](https://github.com/modelcontextprotocol/rust-sdk/pull/1167))
+- *(model)* preserve elicitation property order metadata ([#1150](https://github.com/modelcontextprotocol/rust-sdk/pull/1150))
+- time out auto discovery probe ([#1149](https://github.com/modelcontextprotocol/rust-sdk/pull/1149))
+- *(client)* classify discover outcome at source, not at the error type ([#1133](https://github.com/modelcontextprotocol/rust-sdk/pull/1133))
+
+### Other
+
+- Fix typo in to_authorized_http_client doc comment ([#1158](https://github.com/modelcontextprotocol/rust-sdk/pull/1158))
+
+## [3.1.2](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.1.1...rmcp-v3.1.2) - 2026-08-07
+
+### Fixed
+
+- *(auth)* map 401/403 challenges on the SSE GET stream ([#1152](https://github.com/modelcontextprotocol/rust-sdk/pull/1152))
+- *(sse)* loop instead of recursing when skipping SSE events ([#1146](https://github.com/modelcontextprotocol/rust-sdk/pull/1146))
+- *(auth)* preserve issuer trailing slash during discovery ([#1145](https://github.com/modelcontextprotocol/rust-sdk/pull/1145))
+
+## [3.1.1](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.1.0...rmcp-v3.1.1) - 2026-08-05
+
+### Fixed
+
+- emit cache hints from handler macros ([#1120](https://github.com/modelcontextprotocol/rust-sdk/pull/1120))
+- expose MRTR state to tool handlers ([#1104](https://github.com/modelcontextprotocol/rust-sdk/pull/1104))
+- disambiguate input-required results ([#1103](https://github.com/modelcontextprotocol/rust-sdk/pull/1103))
+
+### Other
+
+- make async-trait optional ([#1119](https://github.com/modelcontextprotocol/rust-sdk/pull/1119))
+
+## [3.1.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.1...rmcp-v3.1.0) - 2026-07-31
+
+### Added
+
+- classify authorization-required errors ([#1056](https://github.com/modelcontextprotocol/rust-sdk/pull/1056))
+- add strict stateless protocol metadata validation ([#1091](https://github.com/modelcontextprotocol/rust-sdk/pull/1091))
+- SEP-2260 stream-based enforcement of client receive-side request association ([#1055](https://github.com/modelcontextprotocol/rust-sdk/pull/1055))
+
+### Fixed
+
+- *(model)* decode metadata-bearing input-required results affecting mrtr ([#1097](https://github.com/modelcontextprotocol/rust-sdk/pull/1097))
+- require metadata for modern HTTP requests ([#1089](https://github.com/modelcontextprotocol/rust-sdk/pull/1089))
+- honor supported_protocol_versions when negotiating initialize ([#1093](https://github.com/modelcontextprotocol/rust-sdk/pull/1093))
+
+### Other
+
+- document the ping utility with examples ([#1106](https://github.com/modelcontextprotocol/rust-sdk/pull/1106))
+- complete Tier 1 feature docs and finalize roadmap ([#1101](https://github.com/modelcontextprotocol/rust-sdk/pull/1101))
+- *(conformance)* meeting requirements for tier 1 ([#1087](https://github.com/modelcontextprotocol/rust-sdk/pull/1087))
+
+## [3.0.1](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.0...rmcp-v3.0.1) - 2026-07-29
+
+### Fixed
+
+- *(auth)* use discovered resource for token refresh ([#1084](https://github.com/modelcontextprotocol/rust-sdk/pull/1084))
+- return header mismatch for missing protocol header ([#1083](https://github.com/modelcontextprotocol/rust-sdk/pull/1083))
+- negotiate stateless initialize versions ([#1080](https://github.com/modelcontextprotocol/rust-sdk/pull/1080))
+- stamp server info on graceful subscription results ([#1078](https://github.com/modelcontextprotocol/rust-sdk/pull/1078))
+
+## [3.0.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.0-beta.5...rmcp-v3.0.0) - 2026-07-28
+
+### Fixed
+
+- recognize 2026 MCP methods ([#1076](https://github.com/modelcontextprotocol/rust-sdk/pull/1076))
+
+## [3.0.0-beta.5](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.0-beta.4...rmcp-v3.0.0-beta.5) - 2026-07-28
+
+### Fixed
+
+- [**breaking**] remove server_info from DiscoverResult ([#1065](https://github.com/modelcontextprotocol/rust-sdk/pull/1065))
+- preserve transient OAuth discovery HTTP errors ([#1071](https://github.com/modelcontextprotocol/rust-sdk/pull/1071))
+- [**breaking**] preserve OAuth discovery transport errors ([#1069](https://github.com/modelcontextprotocol/rust-sdk/pull/1069))
+- gate client handler bounds for local ([#1068](https://github.com/modelcontextprotocol/rust-sdk/pull/1068))
+
+### Other
+
+- prepare for stable 3.0 release ([#1073](https://github.com/modelcontextprotocol/rust-sdk/pull/1073))
+- RFC 9728 resource is used instead of base url when possible ([#962](https://github.com/modelcontextprotocol/rust-sdk/pull/962))
+- [**breaking**] remove deprecated v3 APIs ([#1066](https://github.com/modelcontextprotocol/rust-sdk/pull/1066))
+
+## [3.0.0-beta.4](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.0-beta.3...rmcp-v3.0.0-beta.4) - 2026-07-28
+
+### Fixed
+
+- accept namespaced discovery server information ([#1044](https://github.com/modelcontextprotocol/rust-sdk/pull/1044))
+
+### Other
+
+- *(deps)* update base64 requirement from 0.22 to 0.23 ([#1059](https://github.com/modelcontextprotocol/rust-sdk/pull/1059))
+- *(deps)* update jsonwebtoken requirement from 10 to 11 ([#1058](https://github.com/modelcontextprotocol/rust-sdk/pull/1058))
+
+## [3.0.0-beta.3](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.0-beta.2...rmcp-v3.0.0-beta.3) - 2026-07-27
+
+### Fixed
+
+- [**breaking**] reject missing `issuer` in authorization server metadata by default ([#1054](https://github.com/modelcontextprotocol/rust-sdk/pull/1054))
+- default to allowing missing `issuer` ([#1051](https://github.com/modelcontextprotocol/rust-sdk/pull/1051))
+
+### Other
+
+- make oauth discovery reactive ([#1052](https://github.com/modelcontextprotocol/rust-sdk/pull/1052))
+
+## [3.0.0-beta.2](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v3.0.0-beta.1...rmcp-v3.0.0-beta.2) - 2026-07-24
+
+### Added
+
+- expose oauth discovery metadata source ([#1041](https://github.com/modelcontextprotocol/rust-sdk/pull/1041))
+
+### Fixed
+
+- [**breaking**] omit resultType for legacy protocol sessions ([#1038](https://github.com/modelcontextprotocol/rust-sdk/pull/1038))
+
+### Other
+
+- declare and check MSRV ([#1034](https://github.com/modelcontextprotocol/rust-sdk/pull/1034))
+
+## [3.0.0-beta.1](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v2.2.0...rmcp-v3.0.0-beta.1) - 2026-07-23
+
+### Added
+
+- route SEP-2260 associated server requests to the originating SSE stream ([#1029](https://github.com/modelcontextprotocol/rust-sdk/pull/1029))
+- [**breaking**] add distributed SSE event store ([#1024](https://github.com/modelcontextprotocol/rust-sdk/pull/1024))
+- add client-side TTL-honoring response cache (SEP-2549) ([#1025](https://github.com/modelcontextprotocol/rust-sdk/pull/1025))
+- [**breaking**] Implement SEP-2663 Tasks Extension ([#1020](https://github.com/modelcontextprotocol/rust-sdk/pull/1020))
+- add subscription listen streams (SEP-2575) ([#1000](https://github.com/modelcontextprotocol/rust-sdk/pull/1000))
+- *(auth)* bind DCR client credentials to issuing authorization server (SEP-2352) ([#998](https://github.com/modelcontextprotocol/rust-sdk/pull/998))
+- add modern client lifecycle modes (SEP-2575) ([#995](https://github.com/modelcontextprotocol/rust-sdk/pull/995))
+- *(auth)* accumulate client-side scopes during step-up authorization ([#888](https://github.com/modelcontextprotocol/rust-sdk/pull/888))
+- [**breaking**] add server discovery and negotiation (SEP-2575) ([#973](https://github.com/modelcontextprotocol/rust-sdk/pull/973))
+- *(conformance)* add SEP-2243 header validation tool ([#997](https://github.com/modelcontextprotocol/rust-sdk/pull/997))
+- [**breaking**] align metadata models with draft schema ([#993](https://github.com/modelcontextprotocol/rust-sdk/pull/993))
+- [**breaking**] implement SEP-2549 cache hints ([#889](https://github.com/modelcontextprotocol/rust-sdk/pull/889))
+- [**breaking**] add MRTR behavior support (SEP-2322) ([#929](https://github.com/modelcontextprotocol/rust-sdk/pull/929))
+- [**breaking**] type Annotations.lastModified as a string ([#956](https://github.com/modelcontextprotocol/rust-sdk/pull/956))
+- [**breaking**] add SEP-2243 HTTP standard headers ([#907](https://github.com/modelcontextprotocol/rust-sdk/pull/907))
+- relax outputSchema to accept non-object JSON Schema types (SEP-2106) ([#895](https://github.com/modelcontextprotocol/rust-sdk/pull/895))
+- [**breaking**] relax tool result structuredContent type (SEP-2106) ([#933](https://github.com/modelcontextprotocol/rust-sdk/pull/933))
+- [**breaking**] add MRTR model types (SEP-2322) ([#915](https://github.com/modelcontextprotocol/rust-sdk/pull/915))
+
+### Fixed
+
+- reap completed response send tasks ([#1026](https://github.com/modelcontextprotocol/rust-sdk/pull/1026))
+- accept stringified numeric response IDs ([#1021](https://github.com/modelcontextprotocol/rust-sdk/pull/1021))
+- re-register after auth server change ([#1011](https://github.com/modelcontextprotocol/rust-sdk/pull/1011))
+- .with_stateful_mode -> .with_legacy_session_mode ([#1015](https://github.com/modelcontextprotocol/rust-sdk/pull/1015))
+- preserve negotiated progress responses ([#1005](https://github.com/modelcontextprotocol/rust-sdk/pull/1005))
+- *(server)* serve draft-version requests statelessly per SEP-2567 ([#999](https://github.com/modelcontextprotocol/rust-sdk/pull/999))
+- pass client header conformance ([#1012](https://github.com/modelcontextprotocol/rust-sdk/pull/1012))
+- *(auth)* add an SDK path for pre-registered OAuth clients ([#994](https://github.com/modelcontextprotocol/rust-sdk/pull/994))
+- *(transport)* cancel in-flight request on stateless streamable-HTTP client disconnect ([#857](https://github.com/modelcontextprotocol/rust-sdk/pull/857)) ([#967](https://github.com/modelcontextprotocol/rust-sdk/pull/967))
+- *(auth)* distinguish rejected refresh tokens from transient failures ([#963](https://github.com/modelcontextprotocol/rust-sdk/pull/963))
+- *(auth)* validate discovered metadata issuer ([#996](https://github.com/modelcontextprotocol/rust-sdk/pull/996))
+- bound streamable HTTP memory usage ([#970](https://github.com/modelcontextprotocol/rust-sdk/pull/970))
+- *(streamable-http)* preserve progress in JSON mode ([#990](https://github.com/modelcontextprotocol/rust-sdk/pull/990))
+- specify compatible sse-stream version ([#968](https://github.com/modelcontextprotocol/rust-sdk/pull/968))
+- flag schema derive on schemars feature ([#966](https://github.com/modelcontextprotocol/rust-sdk/pull/966))
+
+### Other
+
+- refactor OAuth client authorization api ([#1009](https://github.com/modelcontextprotocol/rust-sdk/pull/1009))
+- update for 2026-07-28 version ([#1032](https://github.com/modelcontextprotocol/rust-sdk/pull/1032))
+- *(deps)* update hmac requirement from 0.12 to 0.13 ([#988](https://github.com/modelcontextprotocol/rust-sdk/pull/988))
+- serialize JavaScript dependency install ([#972](https://github.com/modelcontextprotocol/rust-sdk/pull/972))
+
+### Changed
+
+- **BREAKING**: rename `StreamableHttpServerConfig::stateful_mode` to `legacy_session_mode` (and the builder `with_stateful_mode` to `with_legacy_session_mode`) to clarify that the option only affects legacy protocol versions (`< 2026-07-28`); per SEP-2567 the `2026-07-28` draft version is always served statelessly ([#999](https://github.com/modelcontextprotocol/rust-sdk/pull/999))
+
+### Fixed
+
+- use the authorization server issuer as the default `private_key_jwt` audience
+
+## [2.2.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v2.1.0...rmcp-v2.2.0) - 2026-07-08
+
+### Added
+
+- reject auth servers lacking S256 PKCE support ([#955](https://github.com/modelcontextprotocol/rust-sdk/pull/955))
+
+### Fixed
+
+- pass client conformance suite ([#960](https://github.com/modelcontextprotocol/rust-sdk/pull/960))
+- don't respond to cancelled requests ([#957](https://github.com/modelcontextprotocol/rust-sdk/pull/957))
+- fail orphaned streamable HTTP responses on reinit ([#914](https://github.com/modelcontextprotocol/rust-sdk/pull/914))
+- address 2025-11-25 conformance audit findings ([#951](https://github.com/modelcontextprotocol/rust-sdk/pull/951))
+
+## [2.1.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v2.0.0...rmcp-v2.1.0) - 2026-07-02
+
+### Added
+
+- add SEP-414 trace context meta accessors ([#910](https://github.com/modelcontextprotocol/rust-sdk/pull/910))
+- add SEP-2575 meta helpers ([#942](https://github.com/modelcontextprotocol/rust-sdk/pull/942))
+
+### Fixed
+
+- *(transport)* make AsyncRwTransport::receive cancel-safe ([#941](https://github.com/modelcontextprotocol/rust-sdk/pull/941)) ([#947](https://github.com/modelcontextprotocol/rust-sdk/pull/947))
+- *(auth)* preserve refresh_token when refresh response omits it ([#949](https://github.com/modelcontextprotocol/rust-sdk/pull/949))
+- block redirect header leaks ([#936](https://github.com/modelcontextprotocol/rust-sdk/pull/936))
+- don't respond to unparsable messages ([#940](https://github.com/modelcontextprotocol/rust-sdk/pull/940))
+- negotiate protocol version in handler ([#930](https://github.com/modelcontextprotocol/rust-sdk/pull/930))
+
+## [2.0.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.8.0...rmcp-v2.0.0) - 2026-06-27
+
+### Added
+
+- [**breaking**] relax tool result structuredContent type ([#919](https://github.com/modelcontextprotocol/rust-sdk/pull/919))
+- deprecate roots/sampling/logging types ([#923](https://github.com/modelcontextprotocol/rust-sdk/pull/923))
+- [**breaking**] align model types with MCP 2025-11-25 spec ([#927](https://github.com/modelcontextprotocol/rust-sdk/pull/927))
+
+### Fixed
+
+- prevent OAuth resource spoofing ([#937](https://github.com/modelcontextprotocol/rust-sdk/pull/937))
+- block oauth metadata ssrf ([#935](https://github.com/modelcontextprotocol/rust-sdk/pull/935))
+- prevent streamable HTTP session leak ([#934](https://github.com/modelcontextprotocol/rust-sdk/pull/934))
+- fill missing fully qualified syntax in prompt_handler macros ([#866](https://github.com/modelcontextprotocol/rust-sdk/pull/866))
+- *(rmcp)* add Audio variant to PromptMessageContent ([#865](https://github.com/modelcontextprotocol/rust-sdk/pull/865))
+
+### Other
+
+- consolidate repeated rmcp tests ([#931](https://github.com/modelcontextprotocol/rust-sdk/pull/931))
+- Revert "feat!: relax tool result structuredContent type ([#919](https://github.com/modelcontextprotocol/rust-sdk/pull/919))" ([#932](https://github.com/modelcontextprotocol/rust-sdk/pull/932))
+- align README examples with v2 model API ([#928](https://github.com/modelcontextprotocol/rust-sdk/pull/928))
+
+## [1.8.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.7.0...rmcp-v1.8.0) - 2026-06-22
+
+### Added
+
+- standardize resource-not-found error code (SEP-2164) ([#899](https://github.com/modelcontextprotocol/rust-sdk/pull/899))
+- validate OAuth authorization response issuer ([#896](https://github.com/modelcontextprotocol/rust-sdk/pull/896))
+- specify OIDC application_type during dynamic client registration (SEP-837) ([#883](https://github.com/modelcontextprotocol/rust-sdk/pull/883))
+- deprecate roots, sampling, and logging (SEP-2577) ([#884](https://github.com/modelcontextprotocol/rust-sdk/pull/884))
+
+### Fixed
+
+- *(auth)* preserve configured reqwest client ([#917](https://github.com/modelcontextprotocol/rust-sdk/pull/917))
+- *(auth)* align OAuth metadata discovery ordering ([#887](https://github.com/modelcontextprotocol/rust-sdk/pull/887))
+- align progress timeout token ([#909](https://github.com/modelcontextprotocol/rust-sdk/pull/909))
+- *(elicitation)* preserve enumNames through ElicitationSchema serde round-trip ([#905](https://github.com/modelcontextprotocol/rust-sdk/pull/905))
+- return tool errors for invalid arguments ([#894](https://github.com/modelcontextprotocol/rust-sdk/pull/894))
+- *(auth)* apply offline_access to reauth paths ([#897](https://github.com/modelcontextprotocol/rust-sdk/pull/897))
+- update peer info on duplicate initialize ([#862](https://github.com/modelcontextprotocol/rust-sdk/pull/862))
+- strip and validate tool outputSchema and inputSchema ([#860](https://github.com/modelcontextprotocol/rust-sdk/pull/860))
+- remove unnecessary fields from tools' inputSchema ([#856](https://github.com/modelcontextprotocol/rust-sdk/pull/856))
+- reject init header/body version mismatch ([#853](https://github.com/modelcontextprotocol/rust-sdk/pull/853))
+- align protocol version negotiation ([#855](https://github.com/modelcontextprotocol/rust-sdk/pull/855))
+- accept 200 with empty body in response to notifications in addition to 202 ([#849](https://github.com/modelcontextprotocol/rust-sdk/pull/849))
+
+### Other
+
+- Allow custom HTTP clients for OAuth ([#908](https://github.com/modelcontextprotocol/rust-sdk/pull/908))
+- Add progress-aware request timeout reset ([#858](https://github.com/modelcontextprotocol/rust-sdk/pull/858))
+- *(server)* document Err vs Ok(CallToolResult::error) visibility contract on ServerHandler::call_tool ([#854](https://github.com/modelcontextprotocol/rust-sdk/pull/854))
+- refine mcpmate listing copy ([#885](https://github.com/modelcontextprotocol/rust-sdk/pull/885))
+- added jilebi-mcp to the list of built with rmcp ([#861](https://github.com/modelcontextprotocol/rust-sdk/pull/861))
+
+## [1.7.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.6.0...rmcp-v1.7.0) - 2026-05-13
+
+### Added
+
+- add task-based stdio examples ([#839](https://github.com/modelcontextprotocol/rust-sdk/pull/839))
+
+### Fixed
+
+- *(rmcp)* flatten Resource variant of PromptMessageContent ([#843](https://github.com/modelcontextprotocol/rust-sdk/pull/843))
+- reply -32700 on stdio parse errors instead of closing ([#833](https://github.com/modelcontextprotocol/rust-sdk/pull/833))
+
+### Other
+
+- *(rmcp)* remove dependency on chrono default features ([#829](https://github.com/modelcontextprotocol/rust-sdk/pull/829))
+- Fix/issue 817 idle timeout log level ([#824](https://github.com/modelcontextprotocol/rust-sdk/pull/824))
+
+## [1.6.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.5.0...rmcp-v1.6.0) - 2026-05-01
+
+### Added
+
+- *(http)* log Host/Origin rejections ([#826](https://github.com/modelcontextprotocol/rust-sdk/pull/826))
+- *(http)* add Origin header validation ([#823](https://github.com/modelcontextprotocol/rust-sdk/pull/823))
+- *(router)* support runtime disabling of tools ([#809](https://github.com/modelcontextprotocol/rust-sdk/pull/809))
+- optional session store (resumabillity support) ([#775](https://github.com/modelcontextprotocol/rust-sdk/pull/775))
+
+### Fixed
+
+- add init_timeout for streamable-http sessions ([#811](https://github.com/modelcontextprotocol/rust-sdk/pull/811))
+- *(http)* fall back to :authority for HTTP/2 ([#827](https://github.com/modelcontextprotocol/rust-sdk/pull/827))
+- *(docs)* use correct Parameters<T> syntax in tool examples ([#814](https://github.com/modelcontextprotocol/rust-sdk/pull/814))
+
+### Other
+
+- add systemprompt-template to Built with rmcp ([#820](https://github.com/modelcontextprotocol/rust-sdk/pull/820))
+
+## [1.5.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.4.0...rmcp-v1.5.0) - 2026-04-16
+
+### Added
+
+- *(transport)* add constructors for non_exhaustive error types ([#806](https://github.com/modelcontextprotocol/rust-sdk/pull/806))
+- add 2025-11-25 protocol version support ([#802](https://github.com/modelcontextprotocol/rust-sdk/pull/802))
+
+### Fixed
+
+- treat resource metadata JSON parse failure as soft error ([#810](https://github.com/modelcontextprotocol/rust-sdk/pull/810))
+- include http_request_id in request-wise priming event IDs ([#799](https://github.com/modelcontextprotocol/rust-sdk/pull/799))
+- *(http)* drain SSE stream for connection reuse ([#790](https://github.com/modelcontextprotocol/rust-sdk/pull/790))
+
+### Other
+
+- *(deps)* update which requirement from 7 to 8 ([#807](https://github.com/modelcontextprotocol/rust-sdk/pull/807))
+
+## [1.4.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.3.0...rmcp-v1.4.0) - 2026-04-09
+
+### Added
+
+- add Default and constructors to ServerSseMessage ([#794](https://github.com/modelcontextprotocol/rust-sdk/pull/794))
+- add meta to elicitation results ([#792](https://github.com/modelcontextprotocol/rust-sdk/pull/792))
+- *(macros)* auto-generate get_info and default router ([#785](https://github.com/modelcontextprotocol/rust-sdk/pull/785))
+- *(transport)* add which_command for cross-platform executable resolution ([#774](https://github.com/modelcontextprotocol/rust-sdk/pull/774))
+- *(auth)* add StoredCredentials::new() constructor ([#778](https://github.com/modelcontextprotocol/rust-sdk/pull/778))
+
+### Fixed
+
+- *(server)* remove initialized notification gate to support Streamable HTTP ([#788](https://github.com/modelcontextprotocol/rust-sdk/pull/788))
+- default session keep_alive to 5 minutes ([#780](https://github.com/modelcontextprotocol/rust-sdk/pull/780))
+- *(http)* add host check ([#764](https://github.com/modelcontextprotocol/rust-sdk/pull/764))
+- exclude local feature from docs.rs build ([#782](https://github.com/modelcontextprotocol/rust-sdk/pull/782))
+
+### Other
+
+- update Rust toolchain to 1.92 ([#797](https://github.com/modelcontextprotocol/rust-sdk/pull/797))
+- unify IntoCallToolResult Result impls ([#787](https://github.com/modelcontextprotocol/rust-sdk/pull/787))
+
+## [1.3.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.2.0...rmcp-v1.3.0) - 2026-03-24
+
+### Added
+
+- *(transport)* add Unix domain socket client for streamable HTTP ([#749](https://github.com/modelcontextprotocol/rust-sdk/pull/749))
+- *(auth)* implement SEP-2207 OIDC-flavored refresh token guidance ([#676](https://github.com/modelcontextprotocol/rust-sdk/pull/676))
+- add configuration for transparent session re-init ([#760](https://github.com/modelcontextprotocol/rust-sdk/pull/760))
+- add local feature for !Send tool handler support ([#740](https://github.com/modelcontextprotocol/rust-sdk/pull/740))
+
+### Fixed
+
+- prevent CallToolResult and GetTaskPayloadResult from shadowing CustomResult in untagged enums ([#771](https://github.com/modelcontextprotocol/rust-sdk/pull/771))
+- drain in-flight responses on stdin EOF ([#759](https://github.com/modelcontextprotocol/rust-sdk/pull/759))
+- remove default type param from StreamableHttpService ([#758](https://github.com/modelcontextprotocol/rust-sdk/pull/758))
+- use cfg-gated Send+Sync supertraits to avoid semver break ([#757](https://github.com/modelcontextprotocol/rust-sdk/pull/757))
+- *(rmcp)* surface JSON-RPC error bodies on HTTP 4xx responses ([#748](https://github.com/modelcontextprotocol/rust-sdk/pull/748))
+- default CallToolResult content to empty vec on missing field ([#752](https://github.com/modelcontextprotocol/rust-sdk/pull/752))
+- *(auth)* redact secrets in Debug output for StoredCredentials and StoredAuthorizationState ([#744](https://github.com/modelcontextprotocol/rust-sdk/pull/744))
+
+### Other
+
+- fix all clippy warnings across workspace ([#746](https://github.com/modelcontextprotocol/rust-sdk/pull/746))
+
+## [1.2.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.1.1...rmcp-v1.2.0) - 2026-03-11
+
+### Added
+
+- add missing constructors for non-exhaustive model types ([#739](https://github.com/modelcontextprotocol/rust-sdk/pull/739))
+- include granted scopes in OAuth refresh token request ([#731](https://github.com/modelcontextprotocol/rust-sdk/pull/731))
+
+### Fixed
+
+- handle ping requests sent before initialize handshake ([#745](https://github.com/modelcontextprotocol/rust-sdk/pull/745))
+- allow deserializing notifications without params field ([#729](https://github.com/modelcontextprotocol/rust-sdk/pull/729))
+
+### Other
+
+- *(deps)* update jsonwebtoken requirement from 9 to 10 ([#737](https://github.com/modelcontextprotocol/rust-sdk/pull/737))
+
+## [1.1.1](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.1.0...rmcp-v1.1.1) - 2026-03-09
+
+### Fixed
+
+- accept logging/setLevel and ping before initialized notification ([#730](https://github.com/modelcontextprotocol/rust-sdk/pull/730))
+
+## [1.1.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.0.0...rmcp-v1.1.0) - 2026-03-04
+
+### Added
+
+- implement OAuth 2.0 Client Credentials flow ([#707](https://github.com/modelcontextprotocol/rust-sdk/pull/707))
+
+### Other
+
+- add McpMux to Built with rmcp section ([#717](https://github.com/modelcontextprotocol/rust-sdk/pull/717))
+
+## [1.0.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v1.0.0-alpha...rmcp-v1.0.0) - 2026-03-03
+
+### Fixed
+
+- *(auth)* pass WWW-Authenticate scopes to DCR registration request ([#705](https://github.com/modelcontextprotocol/rust-sdk/pull/705))
+- api ergonomics follow-up ([#720](https://github.com/modelcontextprotocol/rust-sdk/pull/720))
+- *(streamable-http)* map stale session 401 to status-aware error ([#709](https://github.com/modelcontextprotocol/rust-sdk/pull/709))
+
+## [1.0.0-alpha](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.17.0...rmcp-v1.0.0-alpha) - 2026-03-03
+
+### Added
+
+- docs update ([#718](https://github.com/modelcontextprotocol/rust-sdk/pull/718))
+- *(auth)* [**breaking**] support returning extra fields from token exchange ([#700](https://github.com/modelcontextprotocol/rust-sdk/pull/700))
+
+### Fixed
+
+- downgrade logging of message to `TRACE` to avoid spamming logs ([#699](https://github.com/modelcontextprotocol/rust-sdk/pull/699))
+
+### Other
+
+- add #[non_exhaustive] and mutation methods to improve compatibility ([#715](https://github.com/modelcontextprotocol/rust-sdk/pull/715))
+
+## [0.17.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.16.0...rmcp-v0.17.0) - 2026-02-27
+
+### Added
+
+- *(streamable-http)* add json_response option for stateless server mode ([#683](https://github.com/modelcontextprotocol/rust-sdk/pull/683))
+- mcp sdk conformance ([#687](https://github.com/modelcontextprotocol/rust-sdk/pull/687))
+- add default value support to string, number, and integer schemas ([#686](https://github.com/modelcontextprotocol/rust-sdk/pull/686))
+- add trait-based tool declaration ([#677](https://github.com/modelcontextprotocol/rust-sdk/pull/677))
+- send and validate MCP-Protocol-Version header ([#675](https://github.com/modelcontextprotocol/rust-sdk/pull/675))
+
+### Fixed
+
+- improve error logging and remove token secret from logs ([#685](https://github.com/modelcontextprotocol/rust-sdk/pull/685))
+- refresh token expiry ([#680](https://github.com/modelcontextprotocol/rust-sdk/pull/680))
+- gate optional dependencies behind feature flags ([#672](https://github.com/modelcontextprotocol/rust-sdk/pull/672))
+- allow empty content in CallToolResult ([#681](https://github.com/modelcontextprotocol/rust-sdk/pull/681))
+- *(schema)* remove AddNullable from draft2020_12 settings ([#664](https://github.com/modelcontextprotocol/rust-sdk/pull/664))
+
+### Other
+
+- add prose documentation for core features to meet conformance ([#702](https://github.com/modelcontextprotocol/rust-sdk/pull/702))
+- Fix/sse channel replacement conflict ([#682](https://github.com/modelcontextprotocol/rust-sdk/pull/682))
+- document session management for streamable HTTP transport ([#674](https://github.com/modelcontextprotocol/rust-sdk/pull/674))
+
+## [0.16.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.15.0...rmcp-v0.16.0) - 2026-02-17
+
+### Added
+
+- add support for custom HTTP headers in StreamableHttpClient ([#655](https://github.com/modelcontextprotocol/rust-sdk/pull/655))
+- *(auth)* add token_endpoint_auth_method to OAuthClientConfig ([#648](https://github.com/modelcontextprotocol/rust-sdk/pull/648))
+
+### Fixed
+
+- remove unnecessary doc-cfg ([#661](https://github.com/modelcontextprotocol/rust-sdk/pull/661))
+- duplicate meta serialization ([#662](https://github.com/modelcontextprotocol/rust-sdk/pull/662))
+- sort list_all() output in ToolRouter and PromptRouter for deterministic ordering ([#665](https://github.com/modelcontextprotocol/rust-sdk/pull/665))
+- align task response types with MCP spec ([#658](https://github.com/modelcontextprotocol/rust-sdk/pull/658))
+
+### Other
+
+- upgrade reqwest to 0.13.2 ([#669](https://github.com/modelcontextprotocol/rust-sdk/pull/669))
+- include LICENSE in final crate tarball ([#657](https://github.com/modelcontextprotocol/rust-sdk/pull/657))
+- *(deps)* update rand requirement from 0.9 to 0.10 ([#650](https://github.com/modelcontextprotocol/rust-sdk/pull/650))
+- remove unused axum dependency from server-side-http feature ([#642](https://github.com/modelcontextprotocol/rust-sdk/pull/642))
+- 11-25-2025 compliant Auth ([#651](https://github.com/modelcontextprotocol/rust-sdk/pull/651))
+- add rudof-mcp to MCP servers list ([#645](https://github.com/modelcontextprotocol/rust-sdk/pull/645))
+
+## [0.15.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.14.0...rmcp-v0.15.0) - 2026-02-10
+
+### Added
+
+- *(elicitation)* add support URL elicitation. SEP-1036 ([#605](https://github.com/modelcontextprotocol/rust-sdk/pull/605))
+- enforce SEP-1577 MUST requirements for sampling with tools ([#646](https://github.com/modelcontextprotocol/rust-sdk/pull/646))
+- add native-tls as an optional TLS backend ([#631](https://github.com/modelcontextprotocol/rust-sdk/pull/631))
+- *(capabilities)* add extensions field for SEP-1724 ([#643](https://github.com/modelcontextprotocol/rust-sdk/pull/643))
+
+### Fixed
+
+- *(tasks)* avoid dropping completed task results during collection ([#639](https://github.com/modelcontextprotocol/rust-sdk/pull/639))
+- *(auth)* oauth metadata discovery ([#641](https://github.com/modelcontextprotocol/rust-sdk/pull/641))
+- compilation with --no-default-features ([#593](https://github.com/modelcontextprotocol/rust-sdk/pull/593))
+- *(tasks)* expose `execution.taskSupport` on tools ([#635](https://github.com/modelcontextprotocol/rust-sdk/pull/635))
+- *(tasks)* correct enum variant ordering for deserialization ([#634](https://github.com/modelcontextprotocol/rust-sdk/pull/634))
+
+### Other
+
+- Add optional description field to Implementation struct ([#649](https://github.com/modelcontextprotocol/rust-sdk/pull/649))
+- Implement SEP-1577: Sampling With Tools ([#628](https://github.com/modelcontextprotocol/rust-sdk/pull/628))
+
+## [0.14.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.13.0...rmcp-v0.14.0) - 2026-01-23
+
+### Fixed
+
+- *(tasks)* #626 model task capabilities correctly ([#627](https://github.com/modelcontextprotocol/rust-sdk/pull/627))
+- don't treat non-success HTTP codes as transport errors ([#618](https://github.com/modelcontextprotocol/rust-sdk/pull/618))
+
+### Other
+
+- show README content on docs.rs ([#583](https://github.com/modelcontextprotocol/rust-sdk/pull/583))
+- added hyper-mcp to the list of built with rmcp ([#621](https://github.com/modelcontextprotocol/rust-sdk/pull/621))
+- Implement SEP-1319: Decouple Request Payload from RPC Methods ([#617](https://github.com/modelcontextprotocol/rust-sdk/pull/617))
+
+## [0.13.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.12.0...rmcp-v0.13.0) - 2026-01-15
+
+### Added
+
+- provide blanket implementations for ClientHandler and ServerHandler traits ([#609](https://github.com/modelcontextprotocol/rust-sdk/pull/609))
+- *(service)* add close() method for graceful connection shutdown ([#588](https://github.com/modelcontextprotocol/rust-sdk/pull/588))
+- *(auth)* add StateStore trait for pluggable OAuth state storage ([#614](https://github.com/modelcontextprotocol/rust-sdk/pull/614))
+- *(elicitation)* implement SEP-1330 Elicitation Enum Schema Improvements ([#539](https://github.com/modelcontextprotocol/rust-sdk/pull/539))
+- *(task)* add task support (SEP-1686) ([#536](https://github.com/modelcontextprotocol/rust-sdk/pull/536))
+
+### Fixed
+
+- use the json rpc error from the initialize response and bubble it up to the client ([#569](https://github.com/modelcontextprotocol/rust-sdk/pull/569))
+- *(build)* fix build of the project when no features are selected ([#606](https://github.com/modelcontextprotocol/rust-sdk/pull/606))
+- use Semaphore instead of Notify in OneshotTransport to prevent race condition ([#611](https://github.com/modelcontextprotocol/rust-sdk/pull/611))
+- add OpenID Connect discovery support per spec-2025-11-25 4.3 ([#598](https://github.com/modelcontextprotocol/rust-sdk/pull/598))
+- only try to refresh access tokens if we have a refresh token or an expiry time ([#594](https://github.com/modelcontextprotocol/rust-sdk/pull/594))
+- *(docs)* add spreadsheet-mcp to Built with rmcp ([#582](https://github.com/modelcontextprotocol/rust-sdk/pull/582))
+
+### Other
+
+- *(elicitation)* improve enum schema builder, small changes of elicitation builder ([#608](https://github.com/modelcontextprotocol/rust-sdk/pull/608))
+- add pre-commit hook for conventional commit verification ([#619](https://github.com/modelcontextprotocol/rust-sdk/pull/619))
+- clean up optional dependencies ([#546](https://github.com/modelcontextprotocol/rust-sdk/pull/546))
+- re-export ServerSseMessage from session module ([#612](https://github.com/modelcontextprotocol/rust-sdk/pull/612))
+- Implement SEP-1699: Support SSE Polling via Server-Side Disconnect ([#604](https://github.com/modelcontextprotocol/rust-sdk/pull/604))
+- update README external links ([#603](https://github.com/modelcontextprotocol/rust-sdk/pull/603))
+- clarity and formatting ([#602](https://github.com/modelcontextprotocol/rust-sdk/pull/602))
+- Add optional icons field to RawResourceTemplate ([#589](https://github.com/modelcontextprotocol/rust-sdk/pull/589))
+
 ## [0.12.0](https://github.com/modelcontextprotocol/rust-sdk/compare/rmcp-v0.11.0...rmcp-v0.12.0) - 2025-12-18
 
 ### Added

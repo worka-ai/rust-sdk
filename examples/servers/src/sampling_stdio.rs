@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -12,30 +13,25 @@ use tracing_subscriber::{self, EnvFilter};
 /// Simple Sampling Demo Server
 ///
 /// This server demonstrates how to request LLM sampling from clients.
-/// Run with: cargo run --example servers_sampling_stdio
+/// Run with: cargo run -p mcp-server-examples --example servers_sampling_stdio
 #[derive(Clone, Debug, Default)]
 pub struct SamplingDemoServer;
 
 impl ServerHandler for SamplingDemoServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(concat!(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(concat!(
                 "This is a demo server that requests sampling from clients. It provides tools that use LLM capabilities.\n\n",
                 "IMPORTANT: This server requires a client that supports the 'sampling/createMessage' method. ",
                 "Without sampling support, the tools will return errors."
-            ).into()),
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
-            ..Default::default()
-        }
+            ))
     }
 
     async fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResponse, ErrorData> {
         match request.name.as_ref() {
             "ask_llm" => {
                 // Get the question from arguments
@@ -48,26 +44,22 @@ impl ServerHandler for SamplingDemoServer {
 
                 let response = context
                     .peer
-                    .create_message(CreateMessageRequestParam {
-                        messages: vec![SamplingMessage {
-                            role: Role::User,
-                            content: Content::text(question),
-                        }],
-                        model_preferences: Some(ModelPreferences {
-                            hints: Some(vec![ModelHint {
-                                name: Some("claude".to_string()),
-                            }]),
-                            cost_priority: Some(0.3),
-                            speed_priority: Some(0.8),
-                            intelligence_priority: Some(0.7),
-                        }),
-                        system_prompt: Some("You are a helpful assistant.".to_string()),
-                        include_context: Some(ContextInclusion::None),
-                        temperature: Some(0.7),
-                        max_tokens: 150,
-                        stop_sequences: None,
-                        metadata: None,
-                    })
+                    .create_message(
+                        CreateMessageRequestParams::new(
+                            vec![SamplingMessage::user_text(question)],
+                            150,
+                        )
+                        .with_model_preferences(
+                            ModelPreferences::new()
+                                .with_hints(vec![ModelHint::new("claude")])
+                                .with_cost_priority(0.3)
+                                .with_speed_priority(0.8)
+                                .with_intelligence_priority(0.7),
+                        )
+                        .with_system_prompt("You are a helpful assistant.")
+                        .with_include_context(ContextInclusion::None)
+                        .with_temperature(0.7),
+                    )
                     .await
                     .map_err(|e| {
                         ErrorData::new(
@@ -77,16 +69,18 @@ impl ServerHandler for SamplingDemoServer {
                         )
                     })?;
                 tracing::debug!("Response: {:?}", response);
-                Ok(CallToolResult::success(vec![Content::text(format!(
+                Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                     "Question: {}\nAnswer: {}",
                     question,
                     response
                         .message
                         .content
-                        .as_text()
+                        .first()
+                        .and_then(|c| c.as_text())
                         .map(|t| &t.text)
                         .unwrap_or(&"No text response".to_string())
-                ))]))
+                ))])
+                .into())
             }
 
             _ => Err(ErrorData::new(
@@ -99,15 +93,14 @@ impl ServerHandler for SamplingDemoServer {
 
     async fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult {
-            tools: vec![Tool {
-                name: "ask_llm".into(),
-                title: None,
-                description: Some("Ask a question to the LLM through sampling".into()),
-                input_schema: Arc::new(
+            tools: vec![Tool::new(
+                "ask_llm",
+                "Ask a question to the LLM through sampling",
+                Arc::new(
                     serde_json::from_value(serde_json::json!({
                         "type": "object",
                         "properties": {
@@ -120,13 +113,8 @@ impl ServerHandler for SamplingDemoServer {
                     }))
                     .unwrap(),
                 ),
-                output_schema: None,
-                annotations: None,
-                icons: None,
-                meta: None,
-            }],
-            meta: None,
-            next_cursor: None,
+            )],
+            ..Default::default()
         })
     }
 }

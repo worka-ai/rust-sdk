@@ -3,6 +3,11 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Expr, ImplItem, ItemImpl, parse_quote};
 
+use crate::{
+    common::{has_method, has_sibling_handler},
+    tool_handler::{CallerCapability, build_get_info},
+};
+
 #[derive(FromMeta, Debug, Default)]
 #[darling(default)]
 pub struct PromptHandlerAttribute {
@@ -22,15 +27,15 @@ pub fn prompt_handler(attr: TokenStream, input: TokenStream) -> syn::Result<Toke
 
     let router_expr = attribute
         .router
-        .unwrap_or_else(|| syn::parse2(quote! { self.prompt_router }).unwrap());
+        .unwrap_or_else(|| syn::parse2(quote! { Self::prompt_router() }).unwrap());
 
     // Add get_prompt implementation
     let get_prompt_impl: ImplItem = parse_quote! {
         async fn get_prompt(
             &self,
-            request: GetPromptRequestParam,
-            context: RequestContext<RoleServer>,
-        ) -> Result<GetPromptResult, rmcp::ErrorData> {
+            request: rmcp::model::GetPromptRequestParams,
+            context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> Result<rmcp::model::GetPromptResponse, rmcp::ErrorData> {
             let prompt_context = rmcp::handler::server::prompt::PromptContext::new(
                 self,
                 request.name,
@@ -51,14 +56,21 @@ pub fn prompt_handler(attr: TokenStream, input: TokenStream) -> syn::Result<Toke
     let list_prompts_impl: ImplItem = parse_quote! {
         async fn list_prompts(
             &self,
-            _request: Option<PaginatedRequestParam>,
-            _context: RequestContext<RoleServer>,
-        ) -> Result<ListPromptsResult, rmcp::ErrorData> {
+            _request: Option<rmcp::model::PaginatedRequestParams>,
+            context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> Result<rmcp::model::ListPromptsResult, rmcp::ErrorData> {
             let prompts = #router_expr.list_all();
-            Ok(ListPromptsResult {
+            let supports_cache_hints = context.protocol_version().is_some_and(|version| {
+                version >= rmcp::model::ProtocolVersion::V_2026_07_28
+            });
+            Ok(rmcp::model::ListPromptsResult {
+                result_type: Some(rmcp::model::ResultType::COMPLETE),
                 prompts,
                 meta: #meta,
                 next_cursor: None,
+                ttl_ms: supports_cache_hints.then_some(0),
+                cache_scope: supports_cache_hints
+                    .then_some(rmcp::model::CacheScope::Public),
             })
         }
     };
@@ -89,6 +101,17 @@ pub fn prompt_handler(attr: TokenStream, input: TokenStream) -> syn::Result<Toke
     }
     if !has_list_prompts {
         impl_block.items.push(list_prompts_impl);
+    }
+
+    // Auto-generate get_info() if not already provided
+    if !has_method("get_info", &impl_block) {
+        // Detect whether tool_handler is also present — if so, it will generate get_info
+        // with both capabilities. Only generate here if tool_handler is NOT present.
+        if !has_sibling_handler(&impl_block, "tool_handler") {
+            let get_info_fn =
+                build_get_info(&impl_block, None, None, None, CallerCapability::Prompts)?;
+            impl_block.items.push(get_info_fn);
+        }
     }
 
     Ok(quote! {

@@ -1,3 +1,5 @@
+#![allow(clippy::exhaustive_structs, clippy::exhaustive_enums)]
+
 use rmcp::{
     ErrorData as McpError, handler::server::wrapper::Parameters, model::*, schemars, tool,
     tool_router,
@@ -38,7 +40,7 @@ impl Demo {
         &self,
         chat_request: Parameters<ChatRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let content = Content::json(chat_request.0)?;
+        let content = ContentBlock::json(chat_request.0)?;
         Ok(CallToolResult::success(vec![content]))
     }
 }
@@ -80,14 +82,15 @@ fn expected_schema() -> serde_json::Value {
           "type": "array"
         },
         "system": {
-          "nullable": true,
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "messages"
       ],
-      "title": "ChatRequest",
       "type": "object"
     })
 }

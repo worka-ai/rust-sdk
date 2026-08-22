@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rmcp::{
     ServiceExt,
-    model::{CallToolRequestParam, GetPromptRequestParam, ReadResourceRequestParam},
+    model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams},
     object,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
@@ -37,21 +37,19 @@ async fn main() -> Result<()> {
 
     // Call tool echo
     let tool_result = client
-        .call_tool(CallToolRequestParam {
-            name: "echo".into(),
-            arguments: Some(object!({ "message": "hi from rmcp" })),
-            task: None,
-        })
+        .call_tool(
+            CallToolRequestParams::new("echo")
+                .with_arguments(object!({ "message": "hi from rmcp" })),
+        )
         .await?;
     tracing::info!("Tool result for echo: {tool_result:#?}");
 
     // Call tool longRunningOperation
     let tool_result = client
-        .call_tool(CallToolRequestParam {
-            name: "longRunningOperation".into(),
-            arguments: Some(object!({ "duration": 3, "steps": 1 })),
-            task: None,
-        })
+        .call_tool(
+            CallToolRequestParams::new("longRunningOperation")
+                .with_arguments(object!({ "duration": 3, "steps": 1 })),
+        )
         .await?;
     tracing::info!("Tool result for longRunningOperation: {tool_result:#?}");
 
@@ -61,9 +59,9 @@ async fn main() -> Result<()> {
 
     // Read resource
     let resource = client
-        .read_resource(ReadResourceRequestParam {
-            uri: "test://static/resource/3".into(),
-        })
+        .read_resource(ReadResourceRequestParams::new(
+            "demo://resource/static/document/architecture.md",
+        ))
         .await?;
     tracing::info!("Resource: {resource:#?}");
 
@@ -73,21 +71,18 @@ async fn main() -> Result<()> {
 
     // Get simple prompt
     let prompt = client
-        .get_prompt(GetPromptRequestParam {
-            name: "simple_prompt".into(),
-            arguments: None,
-        })
+        .get_prompt(GetPromptRequestParams::new("simple-prompt"))
         .await?;
     tracing::info!("Prompt - simple: {prompt:#?}");
 
-    // Get complex prompt (returns text & image)
+    // Get prompt with arguments
     let prompt = client
-        .get_prompt(GetPromptRequestParam {
-            name: "complex_prompt".into(),
-            arguments: Some(object!({ "temperature": "0.5", "style": "formal" })),
-        })
+        .get_prompt(
+            GetPromptRequestParams::new("args-prompt")
+                .with_arguments(object!({ "city": "Dallas", "state": "Texas" })),
+        )
         .await?;
-    tracing::info!("Prompt - complex: {prompt:#?}");
+    tracing::info!("Prompt - args: {prompt:#?}");
 
     // List resource templates
     let resource_templates = client.list_all_resource_templates().await?;

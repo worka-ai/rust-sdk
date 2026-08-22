@@ -203,11 +203,11 @@ impl SqlQueryServer {
         let messages = if args.operation.is_empty() {
             vec![
                 PromptMessage::new_text(
-                    PromptMessageRole::User,
+                    Role::User,
                     "I need help building a SQL query. Where should I start?",
                 ),
                 PromptMessage::new_text(
-                    PromptMessageRole::Assistant,
+                    Role::Assistant,
                     "I'll help you build a SQL query step by step. First, what type of operation do you want to perform? \
                      Choose from: SELECT (to read data), INSERT (to add data), UPDATE (to modify data), or DELETE (to remove data).",
                 ),
@@ -215,11 +215,11 @@ impl SqlQueryServer {
         } else if args.table.is_empty() {
             vec![
                 PromptMessage::new_text(
-                    PromptMessageRole::User,
+                    Role::User,
                     format!("I want to {} data. What's next?", args.operation),
                 ),
                 PromptMessage::new_text(
-                    PromptMessageRole::Assistant,
+                    Role::Assistant,
                     format!(
                         "Great! For a {} operation, I need to know which table you want to work with. \
                             What's the name of your database table?",
@@ -277,11 +277,11 @@ impl SqlQueryServer {
 
             vec![
                 PromptMessage::new_text(
-                    PromptMessageRole::User,
+                    Role::User,
                     "Generate the SQL query based on my parameters and explain what it does.",
                 ),
                 PromptMessage::new_text(
-                    PromptMessageRole::Assistant,
+                    Role::Assistant,
                     format!(
                         "Here's your SQL query:\n\n```sql\n{}\n```\n\nThis query will {} the {} table.",
                         query,
@@ -292,52 +292,46 @@ impl SqlQueryServer {
             ]
         };
 
-        Ok(GetPromptResult {
-            description: Some(format!(
-                "SQL Query: {} on {}",
-                if args.operation.is_empty() {
-                    "Unknown"
-                } else {
-                    &args.operation
-                },
-                if args.table.is_empty() {
-                    "table"
-                } else {
-                    &args.table
-                }
-            )),
-            messages,
-        })
+        Ok(GetPromptResult::new(messages).with_description(format!(
+            "SQL Query: {} on {}",
+            if args.operation.is_empty() {
+                "Unknown"
+            } else {
+                &args.operation
+            },
+            if args.table.is_empty() {
+                "table"
+            } else {
+                &args.table
+            }
+        )))
     }
 }
 
 #[prompt_handler]
 impl ServerHandler for SqlQueryServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder()
+        ServerInfo::new(
+            ServerCapabilities::builder()
                 .enable_completions()
                 .enable_prompts()
                 .build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some(
-                "Smart SQL query builder with progressive completion that adapts based on your choices:\n\n\
-                 Step 1: Choose operation type ('sel' → SELECT, 'ins' → INSERT, 'upd' → UPDATE, 'del' → DELETE)\n\
-                 Step 2: Specify table name ('users', 'orders', 'products')\n\
-                 Step 3: Add relevant fields based on operation type:\n\
-                 • SELECT/UPDATE: columns ('name', 'email', 'id')\n\
-                 • INSERT: values to insert\n\
-                 • All: optional WHERE clause\n\n\
-                 The completion adapts - only relevant fields appear based on your SQL operation!"
-                    .to_string(),
-            ),
-            ..Default::default()
-        }
+        )
+        .with_instructions(
+            "Smart SQL query builder with progressive completion that adapts based on your choices:\n\n\
+             Step 1: Choose operation type ('sel' → SELECT, 'ins' → INSERT, 'upd' → UPDATE, 'del' → DELETE)\n\
+             Step 2: Specify table name ('users', 'orders', 'products')\n\
+             Step 3: Add relevant fields based on operation type:\n\
+             • SELECT/UPDATE: columns ('name', 'email', 'id')\n\
+             • INSERT: values to insert\n\
+             • All: optional WHERE clause\n\n\
+             The completion adapts - only relevant fields appear based on your SQL operation!",
+        )
     }
 
     async fn complete(
         &self,
-        request: CompleteRequestParam,
+        request: CompleteRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CompleteResult, McpError> {
         let candidates = match &request.r#ref {
@@ -411,13 +405,10 @@ impl ServerHandler for SqlQueryServer {
 
         let suggestions = self.fuzzy_match(&request.argument.value, &candidates);
 
-        let completion = CompletionInfo {
-            values: suggestions,
-            total: None,
-            has_more: Some(false),
-        };
+        let completion = CompletionInfo::with_pagination(suggestions, None, false)
+            .map_err(|e| McpError::internal_error(e, None))?;
 
-        Ok(CompleteResult { completion })
+        Ok(CompleteResult::new(completion))
     }
 }
 

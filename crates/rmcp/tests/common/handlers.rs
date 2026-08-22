@@ -1,17 +1,25 @@
+// Sampling/Roots/Logging are SEP-2577-deprecated; this test handler exercises them.
+#![expect(deprecated)]
 use std::{
     future::Future,
     sync::{Arc, Mutex},
 };
 
+#[cfg(feature = "client")]
+use rmcp::service::NotificationContext;
+#[cfg(feature = "client")]
+use rmcp::{ClientHandler, RoleClient};
 use rmcp::{
-    ClientHandler, ErrorData as McpError, RoleClient, RoleServer, ServerHandler,
+    ErrorData as McpError, RoleServer, ServerHandler,
     model::*,
-    service::{NotificationContext, RequestContext},
+    service::{MaybeSendFuture, RequestContext},
 };
+#[cfg(feature = "client")]
 use serde_json::json;
 use tokio::sync::Notify;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct TestClientHandler {
     pub honor_this_server: bool,
     pub honor_all_servers: bool,
@@ -46,10 +54,11 @@ impl TestClientHandler {
     }
 }
 
+#[cfg(feature = "client")]
 impl ClientHandler for TestClientHandler {
     async fn create_message(
         &self,
-        params: CreateMessageRequestParam,
+        params: CreateMessageRequestParams,
         _context: RequestContext<RoleClient>,
     ) -> Result<CreateMessageResult, McpError> {
         // First validate that there's at least one User message
@@ -71,21 +80,18 @@ impl ClientHandler for TestClientHandler {
             _ => "Test response without context",
         };
 
-        Ok(CreateMessageResult {
-            message: SamplingMessage {
-                role: Role::Assistant,
-                content: Content::text(response.to_string()),
-            },
-            model: "test-model".to_string(),
-            stop_reason: Some(CreateMessageResult::STOP_REASON_END_TURN.to_string()),
-        })
+        Ok(CreateMessageResult::new(
+            SamplingMessage::assistant_text(response.to_string()),
+            "test-model".to_string(),
+        )
+        .with_stop_reason(CreateMessageResult::STOP_REASON_END_TURN))
     }
 
     fn on_logging_message(
         &self,
         params: LoggingMessageNotificationParam,
         _context: NotificationContext<RoleClient>,
-    ) -> impl Future<Output = ()> + Send + '_ {
+    ) -> impl Future<Output = ()> + MaybeSendFuture + '_ {
         let receive_signal = self.receive_signal.clone();
         let received_messages = self.received_messages.clone();
 
@@ -108,18 +114,17 @@ impl TestServer {
 }
 
 impl ServerHandler for TestServer {
+    #[allow(deprecated)]
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_logging().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_logging().build())
     }
 
+    #[allow(deprecated)]
     fn set_level(
         &self,
-        request: SetLevelRequestParam,
+        request: SetLevelRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<(), McpError>> + Send + '_ {
+    ) -> impl Future<Output = Result<(), McpError>> + MaybeSendFuture + '_ {
         let peer = context.peer;
         async move {
             let (data, logger) = match request.level {
@@ -168,10 +173,12 @@ impl ServerHandler for TestServer {
             };
 
             if let Err(e) = peer
-                .notify_logging_message(LoggingMessageNotificationParam {
-                    level: request.level,
-                    data,
-                    logger,
+                .notify_logging_message({
+                    let mut param = LoggingMessageNotificationParam::new(request.level, data);
+                    if let Some(l) = logger {
+                        param = param.with_logger(l);
+                    }
+                    param
                 })
                 .await
             {

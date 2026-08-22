@@ -3,13 +3,7 @@
 // the ServerHandler trait implementation methods.
 #![allow(dead_code)]
 
-use rmcp::{
-    RoleServer, ServerHandler,
-    handler::server::router::prompt::PromptRouter,
-    model::{GetPromptRequestParam, GetPromptResult, ListPromptsResult, PaginatedRequestParam},
-    prompt_handler,
-    service::RequestContext,
-};
+use rmcp::{ServerHandler, handler::server::router::prompt::PromptRouter, prompt_handler};
 
 #[derive(Debug, Clone)]
 pub struct TestPromptServer {
@@ -30,7 +24,7 @@ impl TestPromptServer {
     }
 }
 
-#[prompt_handler]
+#[prompt_handler(router = self.prompt_router)]
 impl ServerHandler for TestPromptServer {}
 
 #[derive(Debug, Clone)]
@@ -80,7 +74,7 @@ impl<T: Send + Sync + 'static> GenericPromptServer<T> {
     }
 }
 
-#[prompt_handler]
+#[prompt_handler(router = self.prompt_router)]
 impl<T: Send + Sync + 'static> ServerHandler for GenericPromptServer<T> {}
 
 #[test]
@@ -148,7 +142,7 @@ mod nested {
         }
     }
 
-    #[prompt_handler]
+    #[prompt_handler(router = self.prompt_router)]
     impl ServerHandler for NestedServer {}
 
     #[test]

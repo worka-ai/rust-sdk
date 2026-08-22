@@ -17,6 +17,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing_subscriber::{self, EnvFilter};
+use url::Url;
 
 /// User information request
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -93,7 +94,7 @@ impl ElicitationServer {
             }
         };
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "{} {}!",
             request.greeting, user_name
         ))]))
@@ -102,23 +103,56 @@ impl ElicitationServer {
     #[tool(description = "Reset stored user name")]
     async fn reset_name(&self) -> Result<CallToolResult, McpError> {
         *self.user_name.lock().await = None;
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             "User name reset. Next greeting will ask for name again.".to_string(),
         )]))
+    }
+
+    #[tool(description = "Example of URL elicitation")]
+    pub async fn secure_tool_call(
+        &self,
+        context: RequestContext<RoleServer>,
+    ) -> std::result::Result<CallToolResult, McpError> {
+        let elicit_result = context
+            .peer
+            .elicit_url(
+                "User must visit the following URL to complete tool call",
+                Url::parse("https://example.com/complete_tool").expect("valid URL"),
+                "elicit_123",
+            )
+            .await
+            .map_err(|e| {
+                ErrorData::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("Url elicitation has failed: {}", e),
+                    None,
+                )
+            })?;
+        match elicit_result {
+            ElicitationAction::Accept => Ok(CallToolResult::success(vec![ContentBlock::text(
+                "Elicitation via URL successful".to_string(),
+            )])),
+            ElicitationAction::Cancel => Ok(CallToolResult::success(vec![ContentBlock::text(
+                "Elicitation via URL cancelled by user".to_string(),
+            )])),
+            ElicitationAction::Decline => Ok(CallToolResult::error(vec![ContentBlock::text(
+                "Elicitation via URL declined by user".to_string(),
+            )])),
+            _ => Ok(CallToolResult::error(vec![ContentBlock::text(
+                "Unknown elicitation action".to_string(),
+            )])),
+        }
     }
 }
 
 #[tool_handler]
 impl ServerHandler for ElicitationServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::from_build_env())
+            .with_instructions(
                 "Simple server demonstrating elicitation for user name collection".to_string(),
-            ),
-            ..Default::default()
-        }
+            )
     }
 }
 

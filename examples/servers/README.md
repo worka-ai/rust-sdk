@@ -27,6 +27,13 @@ A server using streamable HTTP transport for MCP communication, with axum.
 - Provides counter tools via HTTP streaming
 - Demonstrates streamable HTTP transport configuration
 
+### Modern Subscription Server (`subscriptions_streamhttp.rs`)
+
+A stateless `2026-07-28` server that opens `subscriptions/listen` response
+streams, acknowledges the accepted filter, and emits tagged tool-list changes.
+
+- Run with `cargo run -p mcp-server-examples --example servers_subscriptions_streamhttp`
+
 ### Counter Streamable HTTP Server with Hyper (`counter_hyper_streamable_http.rs`)
 
 A server using streamable HTTP transport for MCP communication, with hyper.
@@ -62,13 +69,34 @@ A server demonstrating the prompt framework capabilities.
 - Uses standard I/O transport
 - Good example of prompt implementation patterns
 
+### Task Demo Server (`task_stdio.rs`)
+
+A minimal stdio server demonstrating the MCP Tasks extension
+([SEP-2663](https://modelcontextprotocol.io/extensions/tasks/overview), `io.modelcontextprotocol/tasks`).
+
+- `slow_sum` is materialized as a task (`CreateTaskResult`, `resultType: "task"`) whenever the client declares the tasks extension capability; other clients get a normal synchronous response
+- `quick_echo` is a regular synchronous tool for contrast
+- Serves `tasks/get` / `tasks/update` / `tasks/cancel` via a `TaskManager`
+- Pair with `examples/clients/src/task_stdio.rs` to see the full lifecycle (create → poll → inline result)
+
+### MRTR Demo (`mrtr.rs`)
+
+An end-to-end walkthrough of SEP-2322 Multi Round-Trip Requests, running a
+server and client in one process over an in-memory stream.
+
+- Server answers `tools/call` with an `InputRequiredResult` asking the client to elicit a value
+- Client uses `call_tool` to auto-fulfil the elicitation and retry, then `call_tool_once` for manual control
+- Seals/opens the untrusted `requestState` with `RequestStateCodec` (HMAC integrity)
+- Both sides negotiate `2026-07-28`, the minimum version for MRTR
+- Run with `cargo run -p mcp-server-examples --example servers_mrtr`
+
 ### Progress Demo Server (`progress_demo.rs`)
 
 A server that demonstrates progress notifications during long-running operations.
 
 - Provides a stream_processor tool that generates progress notifications
 - Demonstrates progress notifications during long-running operations
-- Can be run with `cargo run --example servers_progress_demo -- {stdio|http|all}`
+- Can be run with `cargo run -p mcp-server-examples --example servers_progress_demo -- {stdio|http|all}`
 
 ### Simple Auth Streamable HTTP Server (`simple_auth_streamhttp.rs`)
 
@@ -95,25 +123,25 @@ Each example can be run using Cargo:
 
 ```bash
 # Run the counter standard I/O server
-cargo run --example servers_counter_stdio
+cargo run -p mcp-server-examples --example servers_counter_stdio
 
 # Run the memory standard I/O server
-cargo run --example servers_memory_stdio
+cargo run -p mcp-server-examples --example servers_memory_stdio
 
 # Run the counter streamable HTTP server
-cargo run --example servers_counter_streamhttp
+cargo run -p mcp-server-examples --example servers_counter_streamhttp
 
 # Run the elicitation standard I/O server
-cargo run --example servers_elicitation_stdio
+cargo run -p mcp-server-examples --example servers_elicitation_stdio
 
 # Run the prompt standard I/O server
-cargo run --example servers_prompt_stdio
+cargo run -p mcp-server-examples --example servers_prompt_stdio
 
 # Run the simple auth streamable HTTP server
-cargo run --example servers_simple_auth_streamhttp
+cargo run -p mcp-server-examples --example servers_simple_auth_streamhttp
 
 # Run the complex auth streamable HTTP server
-cargo run --example servers_complex_auth_streamhttp
+cargo run -p mcp-server-examples --example servers_complex_auth_streamhttp
 ```
 
 ## Testing with MCP Inspector

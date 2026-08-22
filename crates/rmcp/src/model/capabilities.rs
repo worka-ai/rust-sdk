@@ -1,14 +1,40 @@
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::collections::BTreeMap;
+#[cfg(any(feature = "server", feature = "macros"))]
+use std::marker::PhantomData;
 
+#[cfg(any(feature = "server", feature = "macros"))]
 use pastey::paste;
 use serde::{Deserialize, Serialize};
 
 use super::JsonObject;
 pub type ExperimentalCapabilities = BTreeMap<String, JsonObject>;
 
+/// MCP extension capabilities map.
+///
+/// Keys are extension identifiers in the format `{vendor-prefix}/{extension-name}`
+/// (e.g., `io.modelcontextprotocol/ui`, `io.modelcontextprotocol/oauth-client-credentials`).
+/// Values are per-extension settings objects. An empty object indicates support with no settings.
+///
+/// # Example
+///
+/// ```rust
+/// use rmcp::model::ExtensionCapabilities;
+/// use serde_json::json;
+///
+/// let mut extensions = ExtensionCapabilities::new();
+/// extensions.insert(
+///     "io.modelcontextprotocol/ui".to_string(),
+///     serde_json::from_value(json!({
+///         "mimeTypes": ["text/html;profile=mcp-app"]
+///     })).unwrap()
+/// );
+/// ```
+pub type ExtensionCapabilities = BTreeMap<String, JsonObject>;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct PromptsCapability {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list_changed: Option<bool>,
@@ -17,6 +43,7 @@ pub struct PromptsCapability {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ResourcesCapability {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subscribe: Option<bool>,
@@ -27,52 +54,113 @@ pub struct ResourcesCapability {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ToolsCapability {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list_changed: Option<bool>,
 }
 
+/// Roots capability. Deprecated by SEP-2577; remains functional and will be
+/// removed in a future release.
+/// See <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577>.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct RootsCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list_changed: Option<bool>,
 }
 
-/// Task capability negotiation for SEP-1686.
+/// Capability for handling elicitation requests from servers.
+/// Elicitation allows servers to request interactive input from users during tool execution.
+/// This capability indicates that a client can handle elicitation requests and present
+/// appropriate UI to users for collecting the requested information.
+///
+/// Capability for form mode elicitation.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct TasksCapability {
-    /// Map of request category (e.g. "tools.call") to a boolean indicating support.
+#[non_exhaustive]
+pub struct FormElicitationCapability {
+    /// Whether the client supports JSON Schema validation for elicitation responses.
+    /// When true, the client will validate user input against the requested_schema
+    /// before sending the response back to the server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub requests: Option<TaskRequestMap>,
-    /// Whether the receiver supports `tasks/list`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub list: Option<bool>,
-    /// Whether the receiver supports `tasks/cancel`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cancel: Option<bool>,
+    pub schema_validation: Option<bool>,
 }
 
-/// A convenience alias for describing per-request task support.
-pub type TaskRequestMap = BTreeMap<String, bool>;
+impl FormElicitationCapability {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-/// Capability for handling elicitation requests from servers.
-///
+    pub fn with_schema_validation(mut self, enabled: bool) -> Self {
+        self.schema_validation = Some(enabled);
+        self
+    }
+}
+
+/// Capability for URL mode elicitation.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
+pub struct UrlElicitationCapability {}
+
+impl UrlElicitationCapability {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Elicitation allows servers to request interactive input from users during tool execution.
 /// This capability indicates that a client can handle elicitation requests and present
 /// appropriate UI to users for collecting the requested information.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ElicitationCapability {
-    /// Whether the client supports JSON Schema validation for elicitation responses.
-    /// When true, the client will validate user input against the requested_schema
-    /// before sending the response back to the server.
+    /// Whether client supports form-based elicitation.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_validation: Option<bool>,
+    pub form: Option<FormElicitationCapability>,
+    /// Whether client supports URL-based elicitation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<UrlElicitationCapability>,
+}
+
+impl ElicitationCapability {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_form(mut self, form: FormElicitationCapability) -> Self {
+        self.form = Some(form);
+        self
+    }
+
+    pub fn with_url(mut self, url: UrlElicitationCapability) -> Self {
+        self.url = Some(url);
+        self
+    }
+}
+
+/// Sampling capability with optional sub-capabilities (SEP-1577).
+///
+/// Deprecated by SEP-2577; remains functional and will be removed in a future
+/// release.
+/// See <https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577>.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
+pub struct SamplingCapability {
+    /// Support for `tools` and `toolChoice` parameters
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<JsonObject>,
+    /// Support for `includeContext` (soft-deprecated)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<JsonObject>,
 }
 
 ///
@@ -81,24 +169,39 @@ pub struct ElicitationCapability {
 /// # use rmcp::model::ClientCapabilities;
 /// let cap = ClientCapabilities::builder()
 ///     .enable_experimental()
-///     .enable_roots()
-///     .enable_roots_list_changed()
 ///     .build();
 /// ```
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ClientCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental: Option<ExperimentalCapabilities>,
+    /// Optional MCP extensions that the client supports (SEP-1724).
+    /// Keys are extension identifiers (e.g., `"io.modelcontextprotocol/ui"`),
+    /// values are per-extension settings objects. An empty object indicates
+    /// support with no settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<ExtensionCapabilities>,
+    /// Capability for filesystem roots (deprecated by SEP-2577).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roots: Option<RootsCapabilities>,
+    /// Capability for LLM sampling requests (SEP-1577, deprecated by SEP-2577).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sampling: Option<JsonObject>,
+    pub sampling: Option<SamplingCapability>,
     /// Capability to handle elicitation requests from servers for interactive user input
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elicitation: Option<ElicitationCapability>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tasks: Option<TasksCapability>,
+}
+
+impl ClientCapabilities {
+    /// Returns `true` if the `io.modelcontextprotocol/tasks` extension
+    /// (SEP-2663) is declared in [`Self::extensions`].
+    pub fn supports_tasks(&self) -> bool {
+        self.extensions
+            .as_ref()
+            .is_some_and(|e| e.contains_key(super::TASKS_EXTENSION_ID))
+    }
 }
 
 ///
@@ -106,7 +209,6 @@ pub struct ClientCapabilities {
 /// ```rust
 /// # use rmcp::model::ServerCapabilities;
 /// let cap = ServerCapabilities::builder()
-///     .enable_logging()
 ///     .enable_experimental()
 ///     .enable_prompts()
 ///     .enable_resources()
@@ -117,9 +219,17 @@ pub struct ClientCapabilities {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental: Option<ExperimentalCapabilities>,
+    /// Optional MCP extensions that the server supports (SEP-1724).
+    /// Keys are extension identifiers (e.g., `"io.modelcontextprotocol/apps"`),
+    /// values are per-extension settings objects. An empty object indicates
+    /// support with no settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<ExtensionCapabilities>,
+    /// Capability for server log message notifications (deprecated by SEP-2577).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging: Option<JsonObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,18 +240,29 @@ pub struct ServerCapabilities {
     pub resources: Option<ResourcesCapability>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<ToolsCapability>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tasks: Option<TasksCapability>,
 }
 
+impl ServerCapabilities {
+    /// Returns `true` if the `io.modelcontextprotocol/tasks` extension
+    /// (SEP-2663) is declared in [`Self::extensions`].
+    pub fn supports_tasks(&self) -> bool {
+        self.extensions
+            .as_ref()
+            .is_some_and(|e| e.contains_key(super::TASKS_EXTENSION_ID))
+    }
+}
+
+#[cfg(any(feature = "server", feature = "macros"))]
 macro_rules! builder {
-    ($Target: ident {$($f: ident: $T: ty),* $(,)?}) => {
+    ($Target: ident {$($(#[$fa:meta])* $f: ident: $T: ty),* $(,)?}) => {
         paste! {
             #[derive(Default, Clone, Copy, Debug)]
+            #[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
             pub struct [<$Target BuilderState>]<
                 $(const [<$f:upper>]: bool = false,)*
             >;
             #[derive(Debug, Default)]
+            #[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
             pub struct [<$Target Builder>]<S = [<$Target BuilderState>]> {
                 $(pub $f: Option<$T>,)*
                 pub state: PhantomData<S>
@@ -165,20 +286,20 @@ macro_rules! builder {
                 }
             }
         }
-        builder!($Target @toggle $($f: $T,) *);
+        builder!($Target @toggle $($(#[$fa])* $f: $T,)*);
 
     };
-    ($Target: ident @toggle $f0: ident: $T0: ty, $($f: ident: $T: ty,)*) => {
-        builder!($Target @toggle [][$f0: $T0][$($f: $T,)*]);
+    ($Target: ident @toggle $(#[$fa0:meta])* $f0: ident: $T0: ty, $($(#[$fa:meta])* $f: ident: $T: ty,)*) => {
+        builder!($Target @toggle [][$(#[$fa0])* $f0: $T0][$($(#[$fa])* $f: $T,)*]);
     };
-    ($Target: ident @toggle [$($ff: ident: $Tf: ty,)*][$fn: ident: $TN: ty][$fn_1: ident: $Tn_1: ty, $($ft: ident: $Tt: ty,)*]) => {
-        builder!($Target @impl_toggle [$($ff: $Tf,)*][$fn: $TN][$fn_1: $Tn_1, $($ft:$Tt,)*]);
-        builder!($Target @toggle [$($ff: $Tf,)* $fn: $TN,][$fn_1: $Tn_1][$($ft:$Tt,)*]);
+    ($Target: ident @toggle [$($ff: ident: $Tf: ty,)*][$(#[$fna:meta])* $fn: ident: $TN: ty][$(#[$fn1a:meta])* $fn_1: ident: $Tn_1: ty, $($(#[$fta:meta])* $ft: ident: $Tt: ty,)*]) => {
+        builder!($Target @impl_toggle [$($ff: $Tf,)*][$(#[$fna])* $fn: $TN][$fn_1: $Tn_1, $($ft:$Tt,)*]);
+        builder!($Target @toggle [$($ff: $Tf,)* $fn: $TN,][$(#[$fn1a])* $fn_1: $Tn_1][$($(#[$fta])* $ft: $Tt,)*]);
     };
-    ($Target: ident @toggle [$($ff: ident: $Tf: ty,)*][$fn: ident: $TN: ty][]) => {
-        builder!($Target @impl_toggle [$($ff: $Tf,)*][$fn: $TN][]);
+    ($Target: ident @toggle [$($ff: ident: $Tf: ty,)*][$(#[$fna:meta])* $fn: ident: $TN: ty][]) => {
+        builder!($Target @impl_toggle [$($ff: $Tf,)*][$(#[$fna])* $fn: $TN][]);
     };
-    ($Target: ident @impl_toggle [$($ff: ident: $Tf: ty,)*][$fn: ident: $TN: ty][$($ft: ident: $Tt: ty,)*]) => {
+    ($Target: ident @impl_toggle [$($ff: ident: $Tf: ty,)*][$(#[$fna:meta])* $fn: ident: $TN: ty][$($ft: ident: $Tt: ty,)*]) => {
         paste! {
             impl<
                 $(const [<$ff:upper>]: bool,)*
@@ -188,6 +309,7 @@ macro_rules! builder {
                 false,
                 $([<$ft:upper>],)*
             >> {
+                $(#[$fna])*
                 pub fn [<enable_ $fn>](self) -> [<$Target Builder>]<[<$Target BuilderState>]<
                     $([<$ff:upper>],)*
                     true,
@@ -200,6 +322,7 @@ macro_rules! builder {
                         state: PhantomData
                     }
                 }
+                $(#[$fna])*
                 pub fn [<enable_ $fn _with>](self, $fn: $TN) -> [<$Target Builder>]<[<$Target BuilderState>]<
                     $([<$ff:upper>],)*
                     true,
@@ -239,20 +362,26 @@ macro_rules! builder {
     }
 }
 
+#[cfg(any(feature = "server", feature = "macros"))]
 builder! {
     ServerCapabilities {
         experimental: ExperimentalCapabilities,
+        extensions: ExtensionCapabilities,
+        #[deprecated(
+            since = "1.8.0",
+            note = "Logging is deprecated by SEP-2577 and will be removed in a future release. See https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577"
+        )]
         logging: JsonObject,
         completions: JsonObject,
         prompts: PromptsCapability,
         resources: ResourcesCapability,
         tools: ToolsCapability,
-        tasks: TasksCapability
     }
 }
 
-impl<const E: bool, const L: bool, const C: bool, const P: bool, const R: bool, const TASKS: bool>
-    ServerCapabilitiesBuilder<ServerCapabilitiesBuilderState<E, L, C, P, R, true, TASKS>>
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<const E: bool, const EXT: bool, const L: bool, const C: bool, const P: bool, const R: bool>
+    ServerCapabilitiesBuilder<ServerCapabilitiesBuilderState<E, EXT, L, C, P, R, true>>
 {
     pub fn enable_tool_list_changed(mut self) -> Self {
         if let Some(c) = self.tools.as_mut() {
@@ -262,8 +391,9 @@ impl<const E: bool, const L: bool, const C: bool, const P: bool, const R: bool, 
     }
 }
 
-impl<const E: bool, const L: bool, const C: bool, const R: bool, const T: bool, const TASKS: bool>
-    ServerCapabilitiesBuilder<ServerCapabilitiesBuilderState<E, L, C, true, R, T, TASKS>>
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<const E: bool, const EXT: bool, const L: bool, const C: bool, const R: bool, const T: bool>
+    ServerCapabilitiesBuilder<ServerCapabilitiesBuilderState<E, EXT, L, C, true, R, T>>
 {
     pub fn enable_prompts_list_changed(mut self) -> Self {
         if let Some(c) = self.prompts.as_mut() {
@@ -273,8 +403,9 @@ impl<const E: bool, const L: bool, const C: bool, const R: bool, const T: bool, 
     }
 }
 
-impl<const E: bool, const L: bool, const C: bool, const P: bool, const T: bool, const TASKS: bool>
-    ServerCapabilitiesBuilder<ServerCapabilitiesBuilderState<E, L, C, P, true, T, TASKS>>
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<const E: bool, const EXT: bool, const L: bool, const C: bool, const P: bool, const T: bool>
+    ServerCapabilitiesBuilder<ServerCapabilitiesBuilderState<E, EXT, L, C, P, true, T>>
 {
     pub fn enable_resources_list_changed(mut self) -> Self {
         if let Some(c) = self.resources.as_mut() {
@@ -291,19 +422,57 @@ impl<const E: bool, const L: bool, const C: bool, const P: bool, const T: bool, 
     }
 }
 
-builder! {
-    ClientCapabilities{
-        experimental: ExperimentalCapabilities,
-        roots: RootsCapabilities,
-        sampling: JsonObject,
-        elicitation: ElicitationCapability,
-        tasks: TasksCapability,
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<S> ServerCapabilitiesBuilder<S> {
+    /// Declare support for the `io.modelcontextprotocol/tasks` extension
+    /// (SEP-2663) in the `extensions` capability map.
+    pub fn enable_tasks(mut self) -> Self {
+        self.extensions
+            .get_or_insert_with(ExtensionCapabilities::new)
+            .insert(super::TASKS_EXTENSION_ID.to_string(), JsonObject::new());
+        self
     }
 }
 
-impl<const E: bool, const S: bool, const EL: bool, const TASKS: bool>
-    ClientCapabilitiesBuilder<ClientCapabilitiesBuilderState<E, true, S, EL, TASKS>>
+#[cfg(any(feature = "server", feature = "macros"))]
+builder! {
+    ClientCapabilities{
+        experimental: ExperimentalCapabilities,
+        extensions: ExtensionCapabilities,
+        #[deprecated(
+            since = "1.8.0",
+            note = "Roots is deprecated by SEP-2577 and will be removed in a future release. See https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577"
+        )]
+        roots: RootsCapabilities,
+        #[deprecated(
+            since = "1.8.0",
+            note = "Sampling is deprecated by SEP-2577 and will be removed in a future release. See https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577"
+        )]
+        sampling: SamplingCapability,
+        elicitation: ElicitationCapability,
+    }
+}
+
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<S> ClientCapabilitiesBuilder<S> {
+    /// Declare support for the `io.modelcontextprotocol/tasks` extension
+    /// (SEP-2663) in the `extensions` capability map.
+    pub fn enable_tasks(mut self) -> Self {
+        self.extensions
+            .get_or_insert_with(ExtensionCapabilities::new)
+            .insert(super::TASKS_EXTENSION_ID.to_string(), JsonObject::new());
+        self
+    }
+}
+
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<const E: bool, const EXT: bool, const S: bool, const EL: bool>
+    ClientCapabilitiesBuilder<ClientCapabilitiesBuilderState<E, EXT, true, S, EL>>
 {
+    #[deprecated(
+        since = "1.8.0",
+        note = "Roots is deprecated by SEP-2577 and will be removed in a future release. See https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577"
+    )]
     pub fn enable_roots_list_changed(mut self) -> Self {
         if let Some(c) = self.roots.as_mut() {
             c.list_changed = Some(true);
@@ -312,25 +481,58 @@ impl<const E: bool, const S: bool, const EL: bool, const TASKS: bool>
     }
 }
 
-#[cfg(feature = "elicitation")]
-impl<const E: bool, const R: bool, const S: bool, const TASKS: bool>
-    ClientCapabilitiesBuilder<ClientCapabilitiesBuilderState<E, R, S, true, TASKS>>
+#[cfg(any(feature = "server", feature = "macros"))]
+impl<const E: bool, const EXT: bool, const R: bool, const EL: bool>
+    ClientCapabilitiesBuilder<ClientCapabilitiesBuilderState<E, EXT, R, true, EL>>
 {
-    /// Enable JSON Schema validation for elicitation responses.
+    /// Enable tool calling in sampling requests
+    #[deprecated(
+        since = "1.8.0",
+        note = "Sampling is deprecated by SEP-2577 and will be removed in a future release. See https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577"
+    )]
+    pub fn enable_sampling_tools(mut self) -> Self {
+        if let Some(c) = self.sampling.as_mut() {
+            c.tools = Some(JsonObject::default());
+        }
+        self
+    }
+
+    /// Enable context inclusion in sampling (soft-deprecated)
+    #[deprecated(
+        since = "1.8.0",
+        note = "Sampling is deprecated by SEP-2577 and will be removed in a future release. See https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577"
+    )]
+    pub fn enable_sampling_context(mut self) -> Self {
+        if let Some(c) = self.sampling.as_mut() {
+            c.context = Some(JsonObject::default());
+        }
+        self
+    }
+}
+
+#[cfg(all(feature = "elicitation", any(feature = "server", feature = "macros")))]
+impl<const E: bool, const EXT: bool, const R: bool, const S: bool>
+    ClientCapabilitiesBuilder<ClientCapabilitiesBuilderState<E, EXT, R, S, true>>
+{
+    /// Enable JSON Schema validation for elicitation responses in form mode.
     /// When enabled, the client will validate user input against the requested_schema
     /// before sending responses back to the server.
     pub fn enable_elicitation_schema_validation(mut self) -> Self {
         if let Some(c) = self.elicitation.as_mut() {
-            c.schema_validation = Some(true);
+            c.form = Some(FormElicitationCapability {
+                schema_validation: Some(true),
+            });
         }
         self
     }
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "server", feature = "macros"))]
 mod test {
     use super::*;
     #[test]
+    #[allow(deprecated)]
     fn test_builder() {
         let builder = <ServerCapabilitiesBuilder>::default()
             .enable_logging()
@@ -366,6 +568,113 @@ mod test {
             Some(RootsCapabilities {
                 list_changed: Some(true),
             })
+        );
+    }
+
+    #[test]
+    fn test_tasks_extension_capability() {
+        // SEP-2663: tasks are declared via the extensions map.
+        let capabilities = ClientCapabilities::builder().enable_tasks().build();
+        assert!(capabilities.supports_tasks());
+        let json = serde_json::to_value(&capabilities).unwrap();
+        assert_eq!(
+            json["extensions"][crate::model::TASKS_EXTENSION_ID],
+            serde_json::json!({})
+        );
+
+        let server = ServerCapabilities::builder().enable_tasks().build();
+        assert!(server.supports_tasks());
+        let json = serde_json::to_value(&server).unwrap();
+        assert_eq!(
+            json["extensions"][crate::model::TASKS_EXTENSION_ID],
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_client_extensions_capability() {
+        // Test building ClientCapabilities with extensions (MCP Apps support)
+        let mut extensions = ExtensionCapabilities::new();
+        extensions.insert(
+            "io.modelcontextprotocol/ui".to_string(),
+            serde_json::from_value(serde_json::json!({
+                "mimeTypes": ["text/html;profile=mcp-app"]
+            }))
+            .unwrap(),
+        );
+
+        let capabilities = ClientCapabilities::builder()
+            .enable_extensions_with(extensions)
+            .enable_sampling()
+            .build();
+
+        // Verify serialization matches MCP Apps spec format
+        let json = serde_json::to_value(&capabilities).unwrap();
+        assert_eq!(
+            json["extensions"]["io.modelcontextprotocol/ui"]["mimeTypes"],
+            serde_json::json!(["text/html;profile=mcp-app"])
+        );
+        assert!(json["sampling"].is_object());
+    }
+
+    #[test]
+    fn test_server_extensions_capability() {
+        // Test building ServerCapabilities with extensions
+        let mut extensions = ExtensionCapabilities::new();
+        extensions.insert(
+            "io.modelcontextprotocol/apps".to_string(),
+            serde_json::from_value(serde_json::json!({})).unwrap(),
+        );
+
+        let capabilities = ServerCapabilities::builder()
+            .enable_extensions_with(extensions)
+            .enable_tools()
+            .build();
+
+        // Verify serialization
+        let json = serde_json::to_value(&capabilities).unwrap();
+        assert!(json["extensions"]["io.modelcontextprotocol/apps"].is_object());
+        assert!(json["tools"].is_object());
+    }
+
+    #[test]
+    fn test_extensions_deserialization() {
+        // Test deserializing capabilities with extensions from JSON
+        let json = serde_json::json!({
+            "extensions": {
+                "io.modelcontextprotocol/ui": {
+                    "mimeTypes": ["text/html;profile=mcp-app"]
+                }
+            },
+            "sampling": {}
+        });
+
+        let capabilities: ClientCapabilities = serde_json::from_value(json).unwrap();
+        assert!(capabilities.extensions.is_some());
+        let extensions = capabilities.extensions.unwrap();
+        assert!(extensions.contains_key("io.modelcontextprotocol/ui"));
+        let ui_ext = extensions.get("io.modelcontextprotocol/ui").unwrap();
+        assert!(ui_ext.contains_key("mimeTypes"));
+    }
+
+    #[test]
+    fn test_extensions_empty_settings() {
+        // Test that empty extension settings work (indicates support with no settings)
+        let mut extensions = ExtensionCapabilities::new();
+        extensions.insert(
+            "io.modelcontextprotocol/oauth-client-credentials".to_string(),
+            JsonObject::new(),
+        );
+
+        let capabilities = ClientCapabilities::builder()
+            .enable_extensions_with(extensions)
+            .build();
+
+        let json = serde_json::to_value(&capabilities).unwrap();
+        assert_eq!(
+            json["extensions"]["io.modelcontextprotocol/oauth-client-credentials"],
+            serde_json::json!({})
         );
     }
 }

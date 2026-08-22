@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, time::Duration};
 
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Level};
@@ -7,6 +7,7 @@ use super::{IntoTransport, Transport};
 use crate::service::{RxJsonRpcMessage, ServiceRole, TxJsonRpcMessage};
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum WorkerQuitReason<E> {
     #[error("Join error {0}")]
     Join(#[from] tokio::task::JoinError),
@@ -21,6 +22,8 @@ pub enum WorkerQuitReason<E> {
     TransportClosed,
     #[error("Handler terminated")]
     HandlerTerminated,
+    #[error("Worker idle timeout after {}ms", _0.as_millis())]
+    IdleTimeout(Duration),
 }
 
 impl<E: std::error::Error + Send + 'static> WorkerQuitReason<E> {
@@ -52,6 +55,7 @@ pub trait Worker: Sized + Send + 'static {
     }
 }
 
+#[non_exhaustive]
 pub struct WorkerSendRequest<W: Worker> {
     pub message: TxJsonRpcMessage<W::Role>,
     pub responder: tokio::sync::oneshot::Sender<Result<(), W::Error>>,
@@ -65,6 +69,7 @@ pub struct WorkerTransport<W: Worker> {
     ct: CancellationToken,
 }
 
+#[non_exhaustive]
 pub struct WorkerConfig {
     pub name: Option<String>,
     pub channel_buffer_capacity: usize,
@@ -78,6 +83,7 @@ impl Default for WorkerConfig {
         }
     }
 }
+#[non_exhaustive]
 pub enum WorkerAdapter {}
 
 impl<W: Worker> IntoTransport<W::Role, W::Error, WorkerAdapter> for W {
@@ -118,7 +124,8 @@ impl<W: Worker> WorkerTransport<W> {
                 .inspect_err(|e| match e {
                     WorkerQuitReason::Cancelled
                     | WorkerQuitReason::TransportClosed
-                    | WorkerQuitReason::HandlerTerminated => {
+                    | WorkerQuitReason::HandlerTerminated
+                    | WorkerQuitReason::IdleTimeout(_) => {
                         tracing::debug!("worker quit with reason: {:?}", e);
                     }
                     WorkerQuitReason::Join(e) => {
@@ -142,11 +149,13 @@ impl<W: Worker> WorkerTransport<W> {
     }
 }
 
+#[non_exhaustive]
 pub struct SendRequest<W: Worker> {
     pub message: TxJsonRpcMessage<W::Role>,
     pub responder: tokio::sync::oneshot::Sender<RxJsonRpcMessage<W::Role>>,
 }
 
+#[non_exhaustive]
 pub struct WorkerContext<W: Worker> {
     pub to_handler_tx: tokio::sync::mpsc::Sender<RxJsonRpcMessage<W::Role>>,
     pub from_handler_rx: tokio::sync::mpsc::Receiver<WorkerSendRequest<W>>,

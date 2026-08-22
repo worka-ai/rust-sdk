@@ -1,17 +1,19 @@
 use std::{borrow::Cow, sync::Arc};
 
+#[cfg(feature = "server")]
 use schemars::JsonSchema;
 /// Tools represent a routine that a server can execute
 /// Tool calls represent requests from the client to execute one
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{Icon, JsonObject, Meta};
+use super::{Icon, JsonObject, MetaObject};
 
 /// A tool that can be used by a model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct Tool {
     /// The name of the tool
     pub name: Cow<'static, str>,
@@ -34,7 +36,7 @@ pub struct Tool {
     pub icons: Option<Vec<Icon>>,
     /// Optional additional metadata for this tool
     #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
-    pub meta: Option<Meta>,
+    pub meta: Option<MetaObject>,
 }
 
 /// Additional properties describing a Tool to clients.
@@ -48,6 +50,7 @@ pub struct Tool {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub struct ToolAnnotations {
     /// A human-readable title for the tool.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,6 +95,24 @@ impl ToolAnnotations {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Create a new ToolAnnotations with all fields specified
+    pub fn from_raw(
+        title: Option<String>,
+        read_only_hint: Option<bool>,
+        destructive_hint: Option<bool>,
+        idempotent_hint: Option<bool>,
+        open_world_hint: Option<bool>,
+    ) -> Self {
+        ToolAnnotations {
+            title,
+            read_only_hint,
+            destructive_hint,
+            idempotent_hint,
+            open_world_hint,
+        }
+    }
+
     pub fn with_title<T>(title: T) -> Self
     where
         T: Into<String>,
@@ -157,6 +178,58 @@ impl Tool {
         }
     }
 
+    /// Create a new tool with just a name and input schema (no description)
+    pub fn new_with_raw<N, S>(
+        name: N,
+        description: Option<Cow<'static, str>>,
+        input_schema: S,
+    ) -> Self
+    where
+        N: Into<Cow<'static, str>>,
+        S: Into<Arc<JsonObject>>,
+    {
+        Tool {
+            name: name.into(),
+            title: None,
+            description,
+            input_schema: input_schema.into(),
+            output_schema: None,
+            annotations: None,
+            icons: None,
+            meta: None,
+        }
+    }
+
+    /// Set the human-readable title
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Set the output schema from a raw value
+    pub fn with_raw_output_schema(mut self, output_schema: Arc<JsonObject>) -> Self {
+        self.output_schema = Some(output_schema);
+        self
+    }
+
+    /// Set the annotations
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.annotations = Some(annotations);
+        self
+    }
+
+    /// Set the icons
+    pub fn with_icons(mut self, icons: Vec<Icon>) -> Self {
+        self.icons = Some(icons);
+        self
+    }
+
+    /// Set the metadata
+    pub fn with_meta(mut self, meta: MetaObject) -> Self {
+        self.meta = Some(meta);
+        self
+    }
+
     pub fn annotate(self, annotations: ToolAnnotations) -> Self {
         Tool {
             annotations: Some(annotations),
@@ -165,20 +238,17 @@ impl Tool {
     }
 
     /// Set the output schema using a type that implements JsonSchema
-    ///
-    /// # Panics
-    ///
-    /// Panics if the generated schema does not have root type "object" as required by MCP specification.
+    #[cfg(feature = "server")]
     pub fn with_output_schema<T: JsonSchema + 'static>(mut self) -> Self {
-        let schema = crate::handler::server::tool::schema_for_output::<T>()
-            .unwrap_or_else(|e| panic!("Invalid output schema for tool '{}': {}", self.name, e));
-        self.output_schema = Some(schema);
+        self.output_schema = Some(crate::handler::server::tool::schema_for_output::<T>());
         self
     }
 
     /// Set the input schema using a type that implements JsonSchema
+    #[cfg(feature = "server")]
     pub fn with_input_schema<T: JsonSchema + 'static>(mut self) -> Self {
-        self.input_schema = crate::handler::server::tool::schema_for_type::<T>();
+        self.input_schema = crate::handler::server::tool::schema_for_input::<T>()
+            .unwrap_or_else(|e| panic!("Invalid input schema for tool '{}': {}", self.name, e));
         self
     }
 

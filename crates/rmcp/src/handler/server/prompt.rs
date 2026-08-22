@@ -6,7 +6,8 @@
 
 use std::{future::Future, marker::PhantomData};
 
-use futures::future::{BoxFuture, FutureExt};
+#[cfg(not(feature = "local"))]
+use futures::future::BoxFuture;
 use serde::de::DeserializeOwned;
 
 use super::common::{AsRequestContext, FromContextPart};
@@ -14,11 +15,12 @@ pub use super::common::{Extension, RequestId};
 use crate::{
     RoleServer,
     handler::server::wrapper::Parameters,
-    model::{GetPromptResult, PromptMessage},
-    service::RequestContext,
+    model::{GetPromptResponse, GetPromptResult, InputRequiredResult, PromptMessage},
+    service::{MaybeBoxFuture, MaybeSend, MaybeSendFuture, RequestContext},
 };
 
 /// Context for prompt retrieval operations
+#[non_exhaustive]
 pub struct PromptContext<'a, S> {
     pub server: &'a S,
     pub name: String,
@@ -57,13 +59,22 @@ pub trait GetPromptHandler<S, A> {
     fn handle(
         self,
         context: PromptContext<'_, S>,
-    ) -> BoxFuture<'_, Result<GetPromptResult, crate::ErrorData>>;
+    ) -> MaybeBoxFuture<'_, Result<GetPromptResponse, crate::ErrorData>>;
 }
 
 /// Type alias for dynamic prompt handlers
-pub type DynGetPromptHandler<S> = dyn for<'a> Fn(PromptContext<'a, S>) -> BoxFuture<'a, Result<GetPromptResult, crate::ErrorData>>
+#[cfg(not(feature = "local"))]
+pub type DynGetPromptHandler<S> = dyn for<'a> Fn(PromptContext<'a, S>) -> BoxFuture<'a, Result<GetPromptResponse, crate::ErrorData>>
     + Send
     + Sync;
+
+#[cfg(feature = "local")]
+pub type DynGetPromptHandler<S> = dyn for<'a> Fn(
+    PromptContext<'a, S>,
+) -> futures::future::LocalBoxFuture<
+    'a,
+    Result<GetPromptResponse, crate::ErrorData>,
+>;
 
 /// Adapter type for async methods that return `Vec<PromptMessage>`
 pub struct AsyncMethodAdapter<T>(PhantomData<T>);
@@ -80,26 +91,29 @@ pub struct SyncPromptMethodAdapter<P, R>(PhantomData<fn(P) -> R>);
 
 /// Trait for types that can be converted into GetPromptResult
 pub trait IntoGetPromptResult {
-    fn into_get_prompt_result(self) -> Result<GetPromptResult, crate::ErrorData>;
+    fn into_get_prompt_result(self) -> Result<GetPromptResponse, crate::ErrorData>;
 }
 
 impl IntoGetPromptResult for GetPromptResult {
-    fn into_get_prompt_result(self) -> Result<GetPromptResult, crate::ErrorData> {
-        Ok(self)
+    fn into_get_prompt_result(self) -> Result<GetPromptResponse, crate::ErrorData> {
+        Ok(self.into())
+    }
+}
+
+impl IntoGetPromptResult for InputRequiredResult {
+    fn into_get_prompt_result(self) -> Result<GetPromptResponse, crate::ErrorData> {
+        Ok(self.into())
     }
 }
 
 impl IntoGetPromptResult for Vec<PromptMessage> {
-    fn into_get_prompt_result(self) -> Result<GetPromptResult, crate::ErrorData> {
-        Ok(GetPromptResult {
-            description: None,
-            messages: self,
-        })
+    fn into_get_prompt_result(self) -> Result<GetPromptResponse, crate::ErrorData> {
+        Ok(GetPromptResult::new(self).into())
     }
 }
 
 impl<T: IntoGetPromptResult> IntoGetPromptResult for Result<T, crate::ErrorData> {
-    fn into_get_prompt_result(self) -> Result<GetPromptResult, crate::ErrorData> {
+    fn into_get_prompt_result(self) -> Result<GetPromptResponse, crate::ErrorData> {
         self.and_then(|v| v.into_get_prompt_result())
     }
 }
@@ -107,6 +121,7 @@ impl<T: IntoGetPromptResult> IntoGetPromptResult for Result<T, crate::ErrorData>
 // Future wrapper that automatically handles IntoGetPromptResult conversion
 pin_project_lite::pin_project! {
     #[project = IntoGetPromptResultFutProj]
+    #[non_exhaustive]
     pub enum IntoGetPromptResultFut<F, R> {
         Pending {
             #[pin]
@@ -115,7 +130,7 @@ pin_project_lite::pin_project! {
         },
         Ready {
             #[pin]
-            result: futures::future::Ready<Result<GetPromptResult, crate::ErrorData>>,
+            result: futures::future::Ready<Result<GetPromptResponse, crate::ErrorData>>,
         }
     }
 }
@@ -125,7 +140,7 @@ where
     F: Future<Output = R>,
     R: IntoGetPromptResult,
 {
-    type Output = Result<GetPromptResult, crate::ErrorData>;
+    type Output = Result<GetPromptResponse, crate::ErrorData>;
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
@@ -141,6 +156,7 @@ where
 }
 
 // Prompt-specific extractor for prompt name
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
 pub struct PromptName(pub String);
 
 impl<S> FromContextPart<PromptContext<'_, S>> for PromptName {
@@ -191,31 +207,31 @@ macro_rules! impl_prompt_handler_for {
         impl<$($Tn,)* S, F, R> GetPromptHandler<S, ($($Tn,)*)> for F
         where
             $(
-                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + Send,
+                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + MaybeSendFuture,
             )*
-            F: FnOnce(&S, $($Tn,)*) -> BoxFuture<'_, R> + Send,
-            R: IntoGetPromptResult + Send + 'static,
-            S: Send + Sync + 'static,
+            F: FnOnce(&S, $($Tn,)*) -> MaybeBoxFuture<'_, R> + MaybeSendFuture,
+            R: IntoGetPromptResult + MaybeSendFuture + 'static,
+            S: MaybeSend + 'static,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn handle(
                 self,
                 mut context: PromptContext<'_, S>,
-            ) -> BoxFuture<'_, Result<GetPromptResult, crate::ErrorData>>
+            ) -> MaybeBoxFuture<'_, Result<GetPromptResponse, crate::ErrorData>>
             {
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
                 let service = context.server;
                 let fut = self(service, $($Tn,)*);
-                async move {
+                Box::pin(async move {
                     let result = fut.await;
                     result.into_get_prompt_result()
-                }.boxed()
+                })
             }
         }
 
@@ -224,28 +240,28 @@ macro_rules! impl_prompt_handler_for {
         impl<$($Tn,)* S, F, R> GetPromptHandler<S, SyncPromptMethodAdapter<($($Tn,)*), R>> for F
         where
             $(
-                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + Send,
+                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + MaybeSendFuture,
             )*
-            F: FnOnce(&S, $($Tn,)*) -> R + Send,
-            R: IntoGetPromptResult + Send,
-            S: Send + Sync,
+            F: FnOnce(&S, $($Tn,)*) -> R + MaybeSendFuture,
+            R: IntoGetPromptResult + MaybeSendFuture,
+            S: MaybeSend,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn handle(
                 self,
                 mut context: PromptContext<'_, S>,
-            ) -> BoxFuture<'_, Result<GetPromptResult, crate::ErrorData>>
+            ) -> MaybeBoxFuture<'_, Result<GetPromptResponse, crate::ErrorData>>
             {
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
                 let service = context.server;
                 let result = self(service, $($Tn,)*);
-                std::future::ready(result.into_get_prompt_result()).boxed()
+                Box::pin(std::future::ready(result.into_get_prompt_result()))
             }
         }
 
@@ -254,25 +270,25 @@ macro_rules! impl_prompt_handler_for {
         impl<$($Tn,)* S, F, Fut, R> GetPromptHandler<S, AsyncPromptAdapter<($($Tn,)*), Fut, R>> for F
         where
             $(
-                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + Send + 'static,
+                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + MaybeSendFuture + 'static,
             )*
-            F: FnOnce($($Tn,)*) -> Fut + Send + 'static,
-            Fut: Future<Output = Result<R, crate::ErrorData>> + Send + 'static,
-            R: IntoGetPromptResult + Send + 'static,
-            S: Send + Sync + 'static,
+            F: FnOnce($($Tn,)*) -> Fut + MaybeSendFuture + 'static,
+            Fut: Future<Output = Result<R, crate::ErrorData>> + MaybeSendFuture + 'static,
+            R: IntoGetPromptResult + MaybeSendFuture + 'static,
+            S: MaybeSend + 'static,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn handle(
                 self,
                 mut context: PromptContext<'_, S>,
-            ) -> BoxFuture<'_, Result<GetPromptResult, crate::ErrorData>>
+            ) -> MaybeBoxFuture<'_, Result<GetPromptResponse, crate::ErrorData>>
             {
                 // Extract all parameters before moving into the async block
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
 
@@ -290,27 +306,27 @@ macro_rules! impl_prompt_handler_for {
         impl<$($Tn,)* S, F, R> GetPromptHandler<S, SyncPromptAdapter<($($Tn,)*), R>> for F
         where
             $(
-                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + Send + 'static,
+                $Tn: for<'a> FromContextPart<PromptContext<'a, S>> + MaybeSendFuture + 'static,
             )*
-            F: FnOnce($($Tn,)*) -> Result<R, crate::ErrorData> + Send + 'static,
-            R: IntoGetPromptResult + Send + 'static,
-            S: Send + Sync,
+            F: FnOnce($($Tn,)*) -> Result<R, crate::ErrorData> + MaybeSendFuture + 'static,
+            R: IntoGetPromptResult + MaybeSendFuture + 'static,
+            S: MaybeSend,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn handle(
                 self,
                 mut context: PromptContext<'_, S>,
-            ) -> BoxFuture<'_, Result<GetPromptResult, crate::ErrorData>>
+            ) -> MaybeBoxFuture<'_, Result<GetPromptResponse, crate::ErrorData>>
             {
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
                 let result = self($($Tn,)*);
-                std::future::ready(result.and_then(|r| r.into_get_prompt_result())).boxed()
+                Box::pin(std::future::ready(result.and_then(|r| r.into_get_prompt_result())))
             }
         }
 

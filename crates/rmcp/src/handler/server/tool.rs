@@ -4,19 +4,23 @@ use std::{
     marker::PhantomData,
 };
 
-use futures::future::{BoxFuture, FutureExt};
+#[cfg(not(feature = "local"))]
+use futures::future::BoxFuture;
 use serde::de::DeserializeOwned;
 
 use super::common::{AsRequestContext, FromContextPart};
 pub use super::{
-    common::{Extension, RequestId, schema_for_output, schema_for_type},
+    common::{Extension, RequestId, schema_for_input, schema_for_output, schema_for_type},
     router::tool::{ToolRoute, ToolRouter},
 };
 use crate::{
     RoleServer,
     handler::server::wrapper::Parameters,
-    model::{CallToolRequestParam, CallToolResult, IntoContents, JsonObject},
-    service::RequestContext,
+    model::{
+        CallToolRequestParams, CallToolResponse, CallToolResult, InputRequiredResult, IntoContents,
+        JsonObject,
+    },
+    service::{MaybeBoxFuture, MaybeSend, MaybeSendFuture, RequestContext},
 };
 
 /// Deserialize a JSON object into a type
@@ -28,22 +32,33 @@ pub fn parse_json_object<T: DeserializeOwned>(input: JsonObject) -> Result<T, cr
         )
     })
 }
+#[non_exhaustive]
 pub struct ToolCallContext<'s, S> {
+    /// The request-specific context for this tool call.
     pub request_context: RequestContext<RoleServer>,
+    /// The server handling this tool call.
     pub service: &'s S,
+    /// The name of the tool being called.
     pub name: Cow<'static, str>,
+    /// The arguments supplied for the tool call.
     pub arguments: Option<JsonObject>,
-    pub task: Option<JsonObject>,
+    /// Client responses to input requests from the previous MRTR round.
+    pub input_responses: Option<crate::model::InputResponses>,
+    /// Opaque state returned by the server during the previous MRTR round.
+    pub request_state: Option<String>,
 }
 
 impl<'s, S> ToolCallContext<'s, S> {
     pub fn new(
         service: &'s S,
-        CallToolRequestParam {
+        CallToolRequestParams {
+            meta: _,
             name,
             arguments,
-            task,
-        }: CallToolRequestParam,
+            input_responses,
+            request_state,
+            ..
+        }: CallToolRequestParams,
         request_context: RequestContext<RoleServer>,
     ) -> Self {
         Self {
@@ -51,7 +66,8 @@ impl<'s, S> ToolCallContext<'s, S> {
             service,
             name,
             arguments,
-            task,
+            input_responses,
+            request_state,
         }
     }
     pub fn name(&self) -> &str {
@@ -73,35 +89,65 @@ impl<S> AsRequestContext for ToolCallContext<'_, S> {
 }
 
 pub trait IntoCallToolResult {
-    fn into_call_tool_result(self) -> Result<CallToolResult, crate::ErrorData>;
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData>;
 }
 
 impl<T: IntoContents> IntoCallToolResult for T {
-    fn into_call_tool_result(self) -> Result<CallToolResult, crate::ErrorData> {
-        Ok(CallToolResult::success(self.into_contents()))
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData> {
+        Ok(CallToolResult::success(self.into_contents()).into())
     }
 }
 
-impl<T: IntoContents, E: IntoContents> IntoCallToolResult for Result<T, E> {
-    fn into_call_tool_result(self) -> Result<CallToolResult, crate::ErrorData> {
-        match self {
-            Ok(value) => Ok(CallToolResult::success(value.into_contents())),
-            Err(error) => Ok(CallToolResult::error(error.into_contents())),
-        }
+impl IntoCallToolResult for CallToolResult {
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData> {
+        Ok(self.into())
     }
 }
 
-impl<T: IntoCallToolResult> IntoCallToolResult for Result<T, crate::ErrorData> {
-    fn into_call_tool_result(self) -> Result<CallToolResult, crate::ErrorData> {
+impl IntoCallToolResult for InputRequiredResult {
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData> {
+        Ok(self.into())
+    }
+}
+
+impl IntoCallToolResult for CallToolResponse {
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData> {
+        Ok(self)
+    }
+}
+
+impl IntoCallToolResult for crate::ErrorData {
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData> {
+        Err(self)
+    }
+}
+
+impl<T: IntoCallToolResult, E: IntoCallToolResult> IntoCallToolResult for Result<T, E> {
+    fn into_call_tool_result(self) -> Result<CallToolResponse, crate::ErrorData> {
         match self {
             Ok(value) => value.into_call_tool_result(),
-            Err(error) => Err(error),
+            Err(error) => match error.into_call_tool_result() {
+                Ok(CallToolResponse::Complete(mut result)) => {
+                    result.is_error = Some(true);
+                    Ok(result.into())
+                }
+                Ok(CallToolResponse::InputRequired(_)) => Err(crate::ErrorData::internal_error(
+                    "InputRequiredResult cannot be returned from a tool error branch",
+                    None,
+                )),
+                Ok(CallToolResponse::Task(_)) => Err(crate::ErrorData::internal_error(
+                    "CreateTaskResult cannot be returned from a tool error branch",
+                    None,
+                )),
+                Err(e) => Err(e),
+            },
         }
     }
 }
 
 pin_project_lite::pin_project! {
     #[project = IntoCallToolResultFutProj]
+    #[non_exhaustive]
     pub enum IntoCallToolResultFut<F, R> {
         Pending {
             #[pin]
@@ -110,7 +156,7 @@ pin_project_lite::pin_project! {
         },
         Ready {
             #[pin]
-            result: Ready<Result<CallToolResult, crate::ErrorData>>,
+            result: Ready<Result<CallToolResponse, crate::ErrorData>>,
         }
     }
 }
@@ -120,7 +166,7 @@ where
     F: Future<Output = R>,
     R: IntoCallToolResult,
 {
-    type Output = Result<CallToolResult, crate::ErrorData>;
+    type Output = Result<CallToolResponse, crate::ErrorData>;
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
@@ -135,29 +181,53 @@ where
     }
 }
 
-impl IntoCallToolResult for Result<CallToolResult, crate::ErrorData> {
-    fn into_call_tool_result(self) -> Result<CallToolResult, crate::ErrorData> {
-        self
-    }
-}
-
 pub trait CallToolHandler<S, A> {
     fn call(
         self,
         context: ToolCallContext<'_, S>,
-    ) -> BoxFuture<'_, Result<CallToolResult, crate::ErrorData>>;
+    ) -> MaybeBoxFuture<'_, Result<CallToolResponse, crate::ErrorData>>;
 }
 
-pub type DynCallToolHandler<S> = dyn for<'s> Fn(ToolCallContext<'s, S>) -> BoxFuture<'s, Result<CallToolResult, crate::ErrorData>>
+#[cfg(not(feature = "local"))]
+pub type DynCallToolHandler<S> = dyn for<'s> Fn(ToolCallContext<'s, S>) -> BoxFuture<'s, Result<CallToolResponse, crate::ErrorData>>
     + Send
     + Sync;
 
+#[cfg(feature = "local")]
+pub type DynCallToolHandler<S> = dyn for<'s> Fn(
+    ToolCallContext<'s, S>,
+) -> futures::future::LocalBoxFuture<
+    's,
+    Result<CallToolResponse, crate::ErrorData>,
+>;
+
 // Tool-specific extractor for tool name
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
 pub struct ToolName(pub Cow<'static, str>);
 
 impl<S> FromContextPart<ToolCallContext<'_, S>> for ToolName {
     fn from_context_part(context: &mut ToolCallContext<S>) -> Result<Self, crate::ErrorData> {
         Ok(Self(context.name.clone()))
+    }
+}
+
+/// Extracts the opaque state returned by the server during the previous MRTR round.
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
+pub struct RequestState(pub Option<String>);
+
+impl<S> FromContextPart<ToolCallContext<'_, S>> for RequestState {
+    fn from_context_part(context: &mut ToolCallContext<S>) -> Result<Self, crate::ErrorData> {
+        Ok(Self(context.request_state.take()))
+    }
+}
+
+/// Extracts client responses to input requests from the previous MRTR round.
+#[expect(clippy::exhaustive_structs, reason = "intentionally exhaustive")]
+pub struct InputResponses(pub Option<crate::model::InputResponses>);
+
+impl<S> FromContextPart<ToolCallContext<'_, S>> for InputResponses {
+    fn from_context_part(context: &mut ToolCallContext<S>) -> Result<Self, crate::ErrorData> {
+        Ok(Self(context.input_responses.take()))
     }
 }
 
@@ -188,7 +258,10 @@ impl<S> FromContextPart<ToolCallContext<'_, S>> for JsonObject {
 }
 
 impl<'s, S> ToolCallContext<'s, S> {
-    pub fn invoke<H, A>(self, h: H) -> BoxFuture<'s, Result<CallToolResult, crate::ErrorData>>
+    pub fn invoke<H, A>(
+        self,
+        h: H,
+    ) -> MaybeBoxFuture<'s, Result<CallToolResponse, crate::ErrorData>>
     where
         H: CallToolHandler<S, A>,
     {
@@ -220,31 +293,31 @@ macro_rules! impl_for {
             $(
                 $Tn: for<'a> FromContextPart<ToolCallContext<'a, S>> ,
             )*
-            F: FnOnce(&S, $($Tn,)*) -> BoxFuture<'_, R>,
+            F: FnOnce(&S, $($Tn,)*) -> MaybeBoxFuture<'_, R>,
 
             // Need RTN support here(I guess), https://github.com/rust-lang/rust/pull/138424
             // Fut: Future<Output = R> + Send + 'a,
-            R: IntoCallToolResult + Send + 'static,
-            S: Send + Sync + 'static,
+            R: IntoCallToolResult + MaybeSendFuture + 'static,
+            S: MaybeSend + 'static,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn call(
                 self,
                 mut context: ToolCallContext<'_, S>,
-            ) -> BoxFuture<'_, Result<CallToolResult, crate::ErrorData>>{
+            ) -> MaybeBoxFuture<'_, Result<CallToolResponse, crate::ErrorData>>{
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
                 let service = context.service;
                 let fut = self(service, $($Tn,)*);
-                async move {
+                Box::pin(async move {
                     let result = fut.await;
                     result.into_call_tool_result()
-                }.boxed()
+                })
             }
         }
 
@@ -253,28 +326,28 @@ macro_rules! impl_for {
             $(
                 $Tn: for<'a> FromContextPart<ToolCallContext<'a, S>> ,
             )*
-            F: FnOnce($($Tn,)*) -> Fut + Send + ,
-            Fut: Future<Output = R> + Send + 'static,
-            R: IntoCallToolResult + Send + 'static,
-            S: Send + Sync,
+            F: FnOnce($($Tn,)*) -> Fut + MaybeSendFuture,
+            Fut: Future<Output = R> + MaybeSendFuture + 'static,
+            R: IntoCallToolResult + MaybeSendFuture + 'static,
+            S: MaybeSend,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn call(
                 self,
                 mut context: ToolCallContext<S>,
-            ) -> BoxFuture<'static, Result<CallToolResult, crate::ErrorData>>{
+            ) -> MaybeBoxFuture<'static, Result<CallToolResponse, crate::ErrorData>>{
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
                 let fut = self($($Tn,)*);
-                async move {
+                Box::pin(async move {
                     let result = fut.await;
                     result.into_call_tool_result()
-                }.boxed()
+                })
             }
         }
 
@@ -283,23 +356,23 @@ macro_rules! impl_for {
             $(
                 $Tn: for<'a> FromContextPart<ToolCallContext<'a, S>> + ,
             )*
-            F: FnOnce(&S, $($Tn,)*) -> R + Send + ,
-            R: IntoCallToolResult + Send + ,
-            S: Send + Sync,
+            F: FnOnce(&S, $($Tn,)*) -> R + MaybeSendFuture,
+            R: IntoCallToolResult + MaybeSendFuture,
+            S: MaybeSend,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn call(
                 self,
                 mut context: ToolCallContext<S>,
-            ) -> BoxFuture<'static, Result<CallToolResult, crate::ErrorData>> {
+            ) -> MaybeBoxFuture<'static, Result<CallToolResponse, crate::ErrorData>> {
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
-                std::future::ready(self(context.service, $($Tn,)*).into_call_tool_result()).boxed()
+                Box::pin(std::future::ready(self(context.service, $($Tn,)*).into_call_tool_result()))
             }
         }
 
@@ -308,23 +381,23 @@ macro_rules! impl_for {
             $(
                 $Tn: for<'a> FromContextPart<ToolCallContext<'a, S>> + ,
             )*
-            F: FnOnce($($Tn,)*) -> R + Send + ,
-            R: IntoCallToolResult + Send + ,
-            S: Send + Sync,
+            F: FnOnce($($Tn,)*) -> R + MaybeSendFuture,
+            R: IntoCallToolResult + MaybeSendFuture,
+            S: MaybeSend,
         {
             #[allow(unused_variables, non_snake_case, unused_mut)]
             fn call(
                 self,
                 mut context: ToolCallContext<S>,
-            ) -> BoxFuture<'static, Result<CallToolResult, crate::ErrorData>>  {
+            ) -> MaybeBoxFuture<'static, Result<CallToolResponse, crate::ErrorData>>  {
                 $(
                     let result = $Tn::from_context_part(&mut context);
                     let $Tn = match result {
                         Ok(value) => value,
-                        Err(e) => return std::future::ready(Err(e)).boxed(),
+                        Err(e) => return Box::pin(std::future::ready(Err(e))),
                     };
                 )*
-                std::future::ready(self($($Tn,)*).into_call_tool_result()).boxed()
+                Box::pin(std::future::ready(self($($Tn,)*).into_call_tool_result()))
             }
         }
     };

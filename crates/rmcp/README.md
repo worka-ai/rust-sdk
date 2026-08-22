@@ -1,256 +1,67 @@
-# RMCP: Rust Model Context Protocol
+<style>
+.rustdoc-hidden { display: none; }
+</style>
 
-`rmcp` is the official Rust implementation of the Model Context Protocol (MCP), a protocol designed for AI assistants to communicate with other services. This library can be used to build both servers that expose capabilities to AI assistants and clients that interact with such servers.
+<div class="rustdoc-hidden">
 
+# rmcp
 
+[![Crates.io](https://img.shields.io/crates/v/rmcp.svg)](https://crates.io/crates/rmcp)
+[![Documentation](https://docs.rs/rmcp/badge.svg)](https://docs.rs/rmcp)
 
+</div>
 
-## Quick Start
+The official Rust SDK for the [Model Context Protocol](https://modelcontextprotocol.io/specification/2026-07-28). Build MCP servers that expose tools, resources, and prompts to AI assistants — or build clients that connect to them.
 
-### Server Implementation
-
-Creating a server with tools is simple using the `#[tool]` macro:
-
-```rust, ignore
-use rmcp::{
-    handler::server::router::tool::ToolRouter, model::*, tool, tool_handler, tool_router,
-    transport::stdio, ErrorData as McpError, ServiceExt,
-};
-use std::future::Future;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-#[derive(Clone)]
-pub struct Counter {
-    counter: Arc<Mutex<i32>>,
-    tool_router: ToolRouter<Self>,
-}
-
-#[tool_router]
-impl Counter {
-    fn new() -> Self {
-        Self {
-            counter: Arc::new(Mutex::new(0)),
-            tool_router: Self::tool_router(),
-        }
-    }
-
-    #[tool(description = "Increment the counter by 1")]
-    async fn increment(&self) -> Result<CallToolResult, McpError> {
-        let mut counter = self.counter.lock().await;
-        *counter += 1;
-        Ok(CallToolResult::success(vec![Content::text(
-            counter.to_string(),
-        )]))
-    }
-
-    #[tool(description = "Get the current counter value")]
-    async fn get(&self) -> Result<CallToolResult, McpError> {
-        let counter = self.counter.lock().await;
-        Ok(CallToolResult::success(vec![Content::text(
-            counter.to_string(),
-        )]))
-    }
-}
-
-// Implement the server handler
-#[tool_handler]
-impl rmcp::ServerHandler for Counter {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("A simple counter that tallies the number of times the increment tool has been used".into()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
-    }
-}
-
-// Run the server
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create and run the server with STDIO transport
-    let service = Counter::new().serve(stdio()).await.inspect_err(|e| {
-        println!("Error starting server: {}", e);
-    })?;
-    service.waiting().await?;
-
-    Ok(())
-}
-```
-
-## Tasks
-
-RMCP implements the task lifecycle from SEP-1686 so long-running or asynchronous tool calls can be queued and polled safely.
-
-- **Create:** set the `task` field on `CallToolRequestParam` to ask the server to enqueue the tool call. The response is a `CreateTaskResult` that includes the generated `task.task_id`.
-- **Inspect:** use `tasks/get` (`GetTaskInfoRequest`) to retrieve metadata such as status, timestamps, TTL, and poll interval.
-- **Await results:** call `tasks/result` (`GetTaskResultRequest`) to block until the task completes and receive either the final `CallToolResult` payload or a protocol error.
-- **Cancel:** call `tasks/cancel` (`CancelTaskRequest`) to request termination of a running task.
-
-To expose task support, enable the `tasks` capability when building `ServerCapabilities`. The `#[task_handler]` macro and `OperationProcessor` utility provide reference implementations for enqueuing, tracking, and collecting task results.
-
-### Client Implementation
-
-Creating a client to interact with a server:
-
-```rust, ignore
-use rmcp::{
-    model::CallToolRequestParam,
-    service::ServiceExt,
-    transport::{TokioChildProcess, ConfigureCommandExt}
-};
-use tokio::process::Command;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to a server running as a child process
-    let service = ()
-    .serve(TokioChildProcess::new(Command::new("uvx").configure(
-        |cmd| {
-            cmd.arg("mcp-server-git");
-        },
-    ))?)
-    .await?;
-
-    // Get server information
-    let server_info = service.peer_info();
-    println!("Connected to server: {server_info:#?}");
-
-    // List available tools
-    let tools = service.list_tools(Default::default()).await?;
-    println!("Available tools: {tools:#?}");
-
-    // Call a tool
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "increment".into(),
-            arguments: None,
-            task: None,
-        })
-        .await?;
-    println!("Result: {result:#?}");
-
-    // Gracefully close the connection
-    service.cancel().await?;
-    
-    Ok(())
-}
-```
-
-## Transport Options
-
-RMCP supports multiple transport mechanisms, each suited for different use cases:
-
-### `transport-inproc`
-In-process transport backed by in-memory channels, useful for embedded or WASM runtimes.
-
-### `transport-async-rw`
-Low-level interface for asynchronous read/write operations. This is the foundation for many other transports.
-
-### `transport-io`
-For working directly with I/O streams (`tokio::io::AsyncRead` and `tokio::io::AsyncWrite`).
-
-### `transport-child-process`
-Run MCP servers as child processes and communicate via standard I/O.
-
-Example:
-```rust
-use rmcp::transport::TokioChildProcess;
-use tokio::process::Command;
-
-let transport = TokioChildProcess::new(Command::new("mcp-server"))?;
-let service = client.serve(transport).await?;
-```
-
-
-
-## Access with peer interface when handling message
-
-You can get the [`Peer`](crate::service::Peer) struct from [`NotificationContext`](crate::service::NotificationContext) and [`RequestContext`](crate::service::RequestContext).
-
-```rust, ignore
-# use rmcp::{
-#     ServerHandler,
-#     model::{LoggingLevel, LoggingMessageNotificationParam, ProgressNotificationParam},
-#     service::{NotificationContext, RoleServer},
-# };
-# pub struct Handler;
-
-impl ServerHandler for Handler {
-    async fn on_progress(
-        &self,
-        notification: ProgressNotificationParam,
-        context: NotificationContext<RoleServer>,
-    ) {
-        let peer = context.peer;
-        let _ = peer
-            .notify_logging_message(LoggingMessageNotificationParam {
-                level: LoggingLevel::Info,
-                logger: None,
-                data: serde_json::json!({
-                    "message": format!("Progress: {}", notification.progress),
-                }),
-            })
-            .await;
-    }
-}
-```
-
-
-## Manage Multi Services
-
-For many cases you need to manage several service in a collection, you can call `into_dyn` to convert services into the same type.
-```rust, ignore
-let service = service.into_dyn();
-```
+For **getting started**, **usage guides**, and **full MCP feature documentation** (resources, prompts, sampling, roots, logging, completions, subscriptions, etc.), see the [main README](../../README.md).
 
 ## Feature Flags
 
-RMCP uses feature flags to control which components are included:
+| Feature | Description | Default |
+|---------|-------------|---------|
+| `server` | Server functionality and the tool system | ✅ |
+| `client` | Client functionality | |
+| `macros` | `#[tool]` / `#[prompt]` macros (re-exports [`rmcp-macros`](../rmcp-macros)) | ✅ |
+| `schemars` | JSON Schema generation for tool definitions | |
+| `auth` | OAuth 2.0 authentication support | |
+| `elicitation` | Elicitation support | |
 
-- `client`: Enable client functionality
-- `server`: Enable server functionality and the tool system
-- `macros`: Enable the `#[tool]` macro (enabled by default)
-- Transport-specific features:
-  - `transport-inproc`: In-process channel transport
-  - `transport-async-rw`: Async read/write support
-  - `transport-io`: I/O stream support
-  - `transport-child-process`: Child process support
-  - `transport-streamable-http-client` / `transport-streamable-http-server`: HTTP streaming (client agnostic, see [`StreamableHttpClientTransport`] for details)
-    - `transport-streamable-http-client-reqwest`: a default `reqwest` implementation of the streamable http client
-- `auth`: OAuth2 authentication support
-- `schemars`: JSON Schema generation (for tool definitions)
+### Transport features
 
+| Feature | Description |
+|---------|-------------|
+| `transport-io` | Server-side stdio transport |
+| `transport-child-process` | Client-side stdio transport (spawns a child process) |
+| `transport-async-rw` | Generic async read/write transport |
+| `transport-inproc` | In-process channel transport for embedded runtimes |
+| `transport-streamable-http-client` | Streamable HTTP client (transport-agnostic) |
+| `transport-streamable-http-client-reqwest` | Streamable HTTP client with default `reqwest` backend |
+| `transport-streamable-http-server` | Streamable HTTP server transport |
+
+### TLS backend options (for HTTP transports)
+
+| Feature | Description |
+|---------|-------------|
+| `reqwest` | Uses rustls — pure Rust TLS (recommended default) |
+| `reqwest-native-tls` | Uses platform-native TLS (OpenSSL / Secure Transport / SChannel) |
+| `reqwest-tls-no-provider` | Uses rustls without a default crypto provider (bring your own) |
 
 ## Transports
 
-- `transport-inproc`: In-process channel transport
-- `transport-io`: Server stdio transport
-- `transport-child-process`: Client stdio transport
-- `transport-streamable-http-server` streamable http server transport
-- `transport-streamable-http-client` streamable http client transport
+The transport layer is pluggable. Two built-in pairs cover the most common cases:
 
-<details>
-<summary>Transport</summary>
-The transport type must implemented [`Transport`] trait, which allow it send message concurrently and receive message sequentially.
-There are 2 pairs of standard transport types:
+| | Client | Server |
+|:-:|:-:|:-:|
+| **stdio** | [`TokioChildProcess`](crate::transport::TokioChildProcess) | [`stdio`](crate::transport::stdio) |
+| **Streamable HTTP** | [`StreamableHttpClientTransport`](crate::transport::StreamableHttpClientTransport) | `StreamableHttpService` |
 
-| transport         | client                                                    | server                                                |
-|:-:                |:-:                                                        |:-:                                                    |
-| std IO            | [`child_process::TokioChildProcess`]                      | [`io::stdio`]                                         |
-| streamable http   | [`streamable_http_client::StreamableHttpClientTransport`] | [`streamable_http_server::session::create_session`]   |
+Any type that implements the [`Transport`](crate::transport::Transport) trait can be used. The [`IntoTransport`](crate::transport::IntoTransport) helper trait provides automatic conversions from:
 
-#### [IntoTransport](`IntoTransport`) trait
-[`IntoTransport`] is a helper trait that implicitly convert a type into a transport type.
-
-These types is automatically implemented [`IntoTransport`] trait
-1. A type that already implement both [`futures::Sink`] and [`futures::Stream`] trait, or a tuple `(Tx, Rx)`  where `Tx` is [`futures::Sink`] and `Rx` is [`futures::Stream`].
-2. A type that implement both [`tokio::io::AsyncRead`] and [`tokio::io::AsyncWrite`] trait. or a tuple `(R, W)` where `R` is [`tokio::io::AsyncRead`] and `W` is [`tokio::io::AsyncWrite`].
-3. A type that implement [Worker](`worker::Worker`) trait.
-4. A type that implement [`Transport`] trait.
-
-</details>
+1. `(Sink, Stream)` or a combined `Sink + Stream`
+2. `(AsyncRead, AsyncWrite)` or a combined `AsyncRead + AsyncWrite`
+3. A [`Worker`](crate::transport::worker::Worker) implementation
+4. A [`Transport`](crate::transport::Transport) implementation directly
 
 ## License
 
-This project is licensed under the terms specified in the repository's LICENSE file. 
+This project is licensed under the terms specified in the repository's [LICENSE](../../LICENSE) file.

@@ -1,21 +1,24 @@
 use std::{marker::PhantomData, sync::Arc};
 
-// use crate::schema::*;
-use futures::{SinkExt, StreamExt};
+use futures::SinkExt;
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader},
     sync::Mutex,
 };
 use tokio_util::{
     bytes::{Buf, BufMut, BytesMut},
-    codec::{Decoder, Encoder, FramedRead, FramedWrite},
+    codec::{Decoder, Encoder, FramedWrite},
 };
 
 use super::{IntoTransport, Transport};
-use crate::service::{RxJsonRpcMessage, ServiceRole, TxJsonRpcMessage};
+use crate::{
+    model::ErrorData,
+    service::{RxJsonRpcMessage, ServiceRole, TxJsonRpcMessage},
+};
 
+#[non_exhaustive]
 pub enum TransportAdapterAsyncRW {}
 
 impl<Role, R, W> IntoTransport<Role, std::io::Error, TransportAdapterAsyncRW> for (R, W)
@@ -29,6 +32,7 @@ where
     }
 }
 
+#[non_exhaustive]
 pub enum TransportAdapterAsyncCombinedRW {}
 impl<Role, S> IntoTransport<Role, std::io::Error, TransportAdapterAsyncCombinedRW> for S
 where
@@ -45,8 +49,11 @@ where
 pub type TransportWriter<Role, W> = FramedWrite<W, JsonRpcMessageCodec<TxJsonRpcMessage<Role>>>;
 
 pub struct AsyncRwTransport<Role: ServiceRole, R: AsyncRead, W: AsyncWrite> {
-    read: FramedRead<R, JsonRpcMessageCodec<RxJsonRpcMessage<Role>>>,
+    read: BufReader<R>,
+    line_buf: Vec<u8>,
+    max_length: usize,
     write: Arc<Mutex<Option<TransportWriter<Role, W>>>>,
+    _role: PhantomData<fn() -> Role>,
 }
 
 impl<Role: ServiceRole, R, W> AsyncRwTransport<Role, R, W>
@@ -55,20 +62,31 @@ where
     W: Send + AsyncWrite + Unpin + 'static,
 {
     pub fn new(read: R, write: W) -> Self {
-        let read = FramedRead::new(
-            read,
-            JsonRpcMessageCodec::<RxJsonRpcMessage<Role>>::default(),
-        );
+        Self::new_with_max_length(read, write, usize::MAX)
+    }
+
+    pub fn new_with_max_length(read: R, write: W, max_length: usize) -> Self {
+        // Read at most one byte beyond the configured frame limit so an
+        // oversized peer cannot make us buffer an arbitrarily large line
+        // before the limit is enforced. The extra byte is sufficient to prove
+        // that a non-newline-terminated frame is too large.
+        let read_capacity = max_length.saturating_add(1).min(8 * 1024).max(1);
+        let read = BufReader::with_capacity(read_capacity, read);
         let write = Arc::new(Mutex::new(Some(FramedWrite::new(
             write,
-            JsonRpcMessageCodec::<TxJsonRpcMessage<Role>>::default(),
+            JsonRpcMessageCodec::<TxJsonRpcMessage<Role>>::new_with_max_length(max_length),
         ))));
-        Self { read, write }
+        Self {
+            read,
+            line_buf: Vec::new(),
+            max_length,
+            write,
+            _role: PhantomData,
+        }
     }
 }
 
 #[cfg(feature = "client")]
-#[cfg_attr(docsrs, doc(cfg(feature = "client")))]
 impl<R, W> AsyncRwTransport<crate::RoleClient, R, W>
 where
     R: Send + AsyncRead + Unpin,
@@ -80,7 +98,6 @@ where
 }
 
 #[cfg(feature = "server")]
-#[cfg_attr(docsrs, doc(cfg(feature = "server")))]
 impl<R, W> AsyncRwTransport<crate::RoleServer, R, W>
 where
     R: Send + AsyncRead + Unpin,
@@ -116,15 +133,92 @@ where
         }
     }
 
-    fn receive(&mut self) -> impl Future<Output = Option<RxJsonRpcMessage<Role>>> {
-        let next = self.read.next();
-        async {
-            next.await.and_then(|e| {
-                e.inspect_err(|e| {
+    async fn receive(&mut self) -> Option<RxJsonRpcMessage<Role>> {
+        loop {
+            // `read_until` is not cancellation-safe on its own, and `receive` is
+            // polled inside a `select!` in the service loop: an in-progress line
+            // read is dropped whenever another branch (e.g. an outgoing response)
+            // becomes ready. We rely on `read_until` appending into `self.line_buf`
+            // and only returning at a delimiter or EOF, so a cancelled read leaves
+            // its partial bytes in `self.line_buf`. Keeping that buffer across
+            // calls lets the next read resume the same line; it is cleared only
+            // after a whole line has been consumed. Clearing at the top of the
+            // loop (the previous behaviour) discarded the partial read and so
+            // dropped incoming requests under concurrent response load.
+            loop {
+                let available = match self.read.fill_buf().await {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        tracing::error!("Error reading from stream: {error}");
+                        return None;
+                    }
+                };
+                if available.is_empty() {
+                    return None;
+                }
+                let newline = available.iter().position(|byte| *byte == b'\n');
+                let take = newline.map_or(available.len(), |offset| offset + 1);
+                let next_length = self.line_buf.len().saturating_add(take);
+                let content_length = next_length.saturating_sub(usize::from(newline.is_some()));
+                if content_length > self.max_length {
+                    tracing::error!("Error reading from stream: max line length exceeded");
+                    return None;
+                }
+                self.line_buf.extend_from_slice(&available[..take]);
+                self.read.consume(take);
+                if newline.is_some() {
+                    break;
+                }
+            }
+            // A returned `read_until` means a full line is buffered. Parse it
+            // (borrowing `line_buf`), then clear the buffer — retaining its
+            // capacity for the next read — before handling the parse result.
+            let parsed = {
+                let line = without_carriage_return(
+                    self.line_buf.strip_suffix(b"\n").unwrap_or(&self.line_buf),
+                );
+                if line.is_empty() {
+                    self.line_buf.clear();
+                    continue;
+                }
+                try_parse_with_compatibility::<RxJsonRpcMessage<Role>>(line, "receive")
+            };
+            self.line_buf.clear();
+            match parsed {
+                Ok(Some(msg)) => return Some(msg),
+                Ok(None) => continue,
+                Err(JsonRpcMessageCodecError::Serde(e)) => {
+                    match e.classify() {
+                        serde_json::error::Category::Syntax | serde_json::error::Category::Eof => {
+                            // The input isn't valid JSON, so there's no message id to correlate a
+                            // response to, and replying to invalid data can trigger an error storm
+                            // if the peer echoes the response back as more invalid data. This
+                            // matches the other official MCP SDKs, which ignore unparsable input.
+                            // See https://github.com/modelcontextprotocol/rust-sdk/issues/938
+                            tracing::debug!("Ignoring unparsable incoming message: {e}");
+                        }
+                        serde_json::error::Category::Data | serde_json::error::Category::Io => {
+                            // Well-formed JSON that doesn't match the expected message shape is a
+                            // real protocol error rather than unparsable input, so surface it with
+                            // an Invalid Request response instead of silently dropping it.
+                            tracing::debug!("Protocol error on incoming message: {e}");
+                            let mut write = self.write.lock().await;
+                            let framed = write.as_mut()?;
+                            let response = TxJsonRpcMessage::<Role>::error(
+                                ErrorData::invalid_request("Invalid request", None),
+                                None,
+                            );
+                            if framed.send(response).await.is_err() {
+                                return None;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
                     tracing::error!("Error reading from stream: {}", e);
-                })
-                .ok()
-            })
+                    return None;
+                }
+            }
         }
     }
 
@@ -172,22 +266,22 @@ impl<T> JsonRpcMessageCodec<T> {
 }
 
 fn without_carriage_return(s: &[u8]) -> &[u8] {
-    if let Some(&b'\r') = s.last() {
-        &s[..s.len() - 1]
-    } else {
-        s
-    }
+    s.strip_suffix(b"\r").unwrap_or(s)
 }
+
+/// UTF-8 byte order mark. RFC 8259 §8.1 allows JSON parsers to ignore a leading BOM.
+const UTF8_BOM: &[u8; 3] = b"\xEF\xBB\xBF";
 
 /// Check if a method is a standard MCP method (request, response, or notification).
 /// This includes both requests and notifications defined in the MCP specification.
 ///
-/// Based on MCP specification 2025-06-18: https://modelcontextprotocol.io/specification/2025-06-18
+/// Based on MCP specification 2026-07-28: https://modelcontextprotocol.io/specification/2026-07-28
 fn is_standard_method(method: &str) -> bool {
     matches!(
         method,
         "initialize"
             | "ping"
+            | "server/discover"
             | "prompts/get"
             | "prompts/list"
             | "resources/list"
@@ -195,9 +289,11 @@ fn is_standard_method(method: &str) -> bool {
             | "resources/subscribe"
             | "resources/unsubscribe"
             | "resources/templates/list"
+            | "subscriptions/listen"
             | "tools/call"
             | "tools/list"
             | "completion/complete"
+            | "elicitation/create"
             | "logging/setLevel"
             | "roots/list"
             | "sampling/createMessage"
@@ -215,6 +311,7 @@ fn is_standard_notification(method: &str) -> bool {
             | "notifications/resources/list_changed"
             | "notifications/resources/updated"
             | "notifications/roots/list_changed"
+            | "notifications/subscriptions/acknowledged"
             | "notifications/tools/list_changed"
     )
 }
@@ -247,19 +344,18 @@ fn try_parse_with_compatibility<T: serde::de::DeserializeOwned>(
     line: &[u8],
     context: &str,
 ) -> Result<Option<T>, JsonRpcMessageCodecError> {
+    let line = line.strip_prefix(UTF8_BOM.as_slice()).unwrap_or(line);
     if let Ok(line_str) = std::str::from_utf8(line) {
         match serde_json::from_slice(line) {
             Ok(item) => Ok(Some(item)),
             Err(e) => {
                 // Check if this is a notification that should be ignored for compatibility
-                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(line_str) {
-                    if let Some(method) =
+                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(line_str)
+                    && let Some(method) =
                         json_value.get("method").and_then(serde_json::Value::as_str)
-                    {
-                        if should_ignore_notification(&json_value, method) {
-                            return Ok(None);
-                        }
-                    }
+                    && should_ignore_notification(&json_value, method)
+                {
+                    return Ok(None);
                 }
 
                 tracing::debug!(
@@ -279,6 +375,7 @@ fn try_parse_with_compatibility<T: serde::de::DeserializeOwned>(
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum JsonRpcMessageCodecError {
     #[error("max line length exceeded")]
     MaxLineLengthExceeded,
@@ -397,7 +494,11 @@ impl<T: Serialize> Encoder<T> for JsonRpcMessageCodec<T> {
     type Error = JsonRpcMessageCodecError;
 
     fn encode(&mut self, item: T, buf: &mut BytesMut) -> Result<(), JsonRpcMessageCodecError> {
-        serde_json::to_writer(buf.writer(), &item)?;
+        let encoded = serde_json::to_vec(&item)?;
+        if encoded.len() > self.max_length {
+            return Err(JsonRpcMessageCodecError::MaxLineLengthExceeded);
+        }
+        buf.extend_from_slice(&encoded);
         buf.put_u8(b'\n');
         Ok(())
     }
@@ -405,7 +506,8 @@ impl<T: Serialize> Encoder<T> for JsonRpcMessageCodec<T> {
 
 #[cfg(test)]
 mod test {
-    use futures::{Sink, Stream};
+    use futures::{Sink, Stream, StreamExt};
+    use tokio_util::codec::FramedRead;
 
     use super::*;
     fn from_async_read<T: DeserializeOwned, R: AsyncRead>(reader: R) -> impl Stream<Item = T> {
@@ -514,12 +616,48 @@ mod test {
         assert!(is_standard_notification("notifications/tools/list_changed"));
         assert!(is_standard_notification("notifications/message"));
         assert!(is_standard_notification("notifications/roots/list_changed"));
+        assert!(is_standard_notification(
+            "notifications/subscriptions/acknowledged"
+        ));
 
         // Test that non-standard notifications are not recognized
         assert!(!is_standard_notification("notifications/stderr"));
         assert!(!is_standard_notification("notifications/custom"));
         assert!(!is_standard_notification("notifications/debug"));
         assert!(!is_standard_notification("some/other/method"));
+    }
+
+    #[test]
+    fn test_2026_07_28_standard_method_check() {
+        for method in [
+            "elicitation/create",
+            "server/discover",
+            "subscriptions/listen",
+        ] {
+            assert!(is_standard_method(method), "{method} should be standard");
+        }
+    }
+
+    #[test]
+    fn test_current_standard_notification_is_not_ignored() {
+        let method = "notifications/subscriptions/acknowledged";
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+        });
+
+        assert!(!should_ignore_notification(&notification, method));
+    }
+
+    #[test]
+    fn test_unknown_notification_is_ignored() {
+        let method = "notifications/custom";
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+        });
+
+        assert!(should_ignore_notification(&notification, method));
     }
 
     #[test]
@@ -553,5 +691,170 @@ mod test {
         assert!(result4.unwrap().is_some());
 
         println!("Standard notifications are preserved, non-standard are handled gracefully");
+    }
+
+    #[tokio::test]
+    async fn test_decode_strips_utf8_bom() {
+        use futures::StreamExt;
+        use tokio::io::BufReader;
+
+        // Valid JSON-RPC message preceded by a UTF-8 BOM (EF BB BF). Some Windows
+        // tooling and editors prepend this; the codec should ignore it per RFC 8259 §8.1.
+        let mut data = Vec::new();
+        data.extend_from_slice(UTF8_BOM);
+        data.extend_from_slice(br#"{"jsonrpc":"2.0","method":"ping","id":1}"#);
+        data.push(b'\n');
+
+        let mut cursor = BufReader::new(&data[..]);
+        let mut stream = from_async_read::<serde_json::Value, _>(&mut cursor);
+
+        let item = stream
+            .next()
+            .await
+            .expect("should decode BOM-prefixed line");
+        assert_eq!(
+            item,
+            serde_json::json!({"jsonrpc": "2.0", "method": "ping", "id": 1})
+        );
+    }
+
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn receive_rejects_before_reading_past_the_frame_limit() {
+        use std::{
+            io::Cursor,
+            pin::Pin,
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+            task::{Context, Poll},
+        };
+
+        use tokio::io::{AsyncRead, ReadBuf};
+
+        struct CountingReader {
+            inner: Cursor<Vec<u8>>,
+            bytes_read: Arc<AtomicUsize>,
+        }
+
+        impl AsyncRead for CountingReader {
+            fn poll_read(
+                mut self: Pin<&mut Self>,
+                context: &mut Context<'_>,
+                buffer: &mut ReadBuf<'_>,
+            ) -> Poll<std::io::Result<()>> {
+                let before = buffer.filled().len();
+                let result = Pin::new(&mut self.inner).poll_read(context, buffer);
+                self.bytes_read
+                    .fetch_add(buffer.filled().len() - before, Ordering::Relaxed);
+                result
+            }
+        }
+
+        use crate::{RoleServer, transport::Transport};
+
+        let bytes_read = Arc::new(AtomicUsize::new(0));
+        let reader = CountingReader {
+            inner: Cursor::new(vec![b'x'; 1_024 * 1_024]),
+            bytes_read: bytes_read.clone(),
+        };
+        let mut transport = AsyncRwTransport::<RoleServer, _, _>::new_with_max_length(
+            reader,
+            tokio::io::sink(),
+            32,
+        );
+
+        assert!(transport.receive().await.is_none());
+        assert_eq!(bytes_read.load(Ordering::Relaxed), 33);
+    }
+
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn receive_ignores_parse_error() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        use crate::{RoleServer, transport::Transport};
+
+        // Two paired streams: `server_io` is wrapped by the transport; the test
+        // drives `client_io` to act as the peer.
+        let (server_io, client_io) = tokio::io::duplex(4096);
+        let (server_r, server_w) = tokio::io::split(server_io);
+        let (mut client_r, mut client_w) = tokio::io::split(client_io);
+
+        let mut transport = AsyncRwTransport::<RoleServer, _, _>::new(server_r, server_w);
+
+        client_w
+            .write_all(
+                b"not json\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n",
+            )
+            .await
+            .unwrap();
+
+        // The unparsable line is skipped and the next valid message is still yielded.
+        let received = transport
+            .receive()
+            .await
+            .expect("transport should skip the invalid line and yield the next valid message");
+        assert_eq!(
+            serde_json::to_value(&received).unwrap()["method"],
+            "notifications/initialized",
+        );
+
+        // No response is sent back for the unparsable message (issue #938). Dropping the
+        // transport closes its write side, so the peer reads to EOF and should see no bytes.
+        drop(transport);
+        let mut reply_buf = Vec::new();
+        client_r.read_to_end(&mut reply_buf).await.unwrap();
+        assert!(
+            reply_buf.is_empty(),
+            "expected no response to an unparsable message, got: {}",
+            String::from_utf8_lossy(&reply_buf),
+        );
+    }
+
+    #[cfg(feature = "server")]
+    #[tokio::test]
+    async fn receive_responds_to_protocol_error() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        use crate::{RoleServer, transport::Transport};
+
+        let (server_io, client_io) = tokio::io::duplex(4096);
+        let (server_r, server_w) = tokio::io::split(server_io);
+        let (client_r, mut client_w) = tokio::io::split(client_io);
+
+        let mut transport = AsyncRwTransport::<RoleServer, _, _>::new(server_r, server_w);
+
+        // Well-formed JSON that does not match the JSON-RPC message shape, followed by a
+        // valid notification. Unlike unparsable bytes, this is a protocol error: the
+        // transport should reply to it and still yield the next valid message.
+        client_w
+            .write_all(
+                b"{\"foo\":\"bar\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n",
+            )
+            .await
+            .unwrap();
+
+        let received = transport.receive().await.expect(
+            "transport should reply to the protocol error and yield the next valid message",
+        );
+        assert_eq!(
+            serde_json::to_value(&received).unwrap()["method"],
+            "notifications/initialized",
+        );
+
+        // A protocol error gets an error response back (id omitted since it can't be read).
+        let mut reply_buf = Vec::new();
+        let mut peer = BufReader::new(client_r);
+        peer.read_until(b'\n', &mut reply_buf).await.unwrap();
+        let reply: serde_json::Value = serde_json::from_slice(&reply_buf).unwrap();
+        assert_eq!(
+            reply,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "error": {"code": -32600, "message": "Invalid request"},
+            }),
+        );
     }
 }
